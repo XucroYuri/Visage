@@ -1,0 +1,224 @@
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import sys
+
+from . import __version__
+from .cache import EmbeddingCache
+from .config import VisageConfig, build_config
+from .pipeline import run_pipeline
+from .progress import ProgressDisplay
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="visage",
+        description="macOS-native face clustering and photo sorting tool.",
+    )
+    parser.add_argument("input", help="Input folder containing photos")
+    parser.add_argument("--version", action="version", version=f"visage {__version__}")
+
+    # Output options
+    output_group = parser.add_argument_group("output")
+    output_group.add_argument(
+        "-o", "--output-dir", default=None,
+        help="Output directory (default: <input>/visage_output)",
+    )
+    output_group.add_argument(
+        "--move", action="store_true", default=False,
+        help="Move files instead of copying (default: copy)",
+    )
+    output_group.add_argument(
+        "--dry-run", action="store_true", default=False,
+        help="Show organization plan without modifying files",
+    )
+
+    # Detection options
+    detect_group = parser.add_argument_group("detection")
+    detect_group.add_argument(
+        "--min-confidence", type=float, default=None,
+        help="Minimum face detection confidence (default: 0.5)",
+    )
+    detect_group.add_argument(
+        "--max-workers", type=int, default=None,
+        help="Max parallel detection workers (default: 4)",
+    )
+
+    # Embedding options
+    embed_group = parser.add_argument_group("embedding")
+    embed_group.add_argument(
+        "--model", choices=["small", "large"], default=None,
+        help="Face embedding model size (default: small)",
+    )
+    embed_group.add_argument(
+        "--num-jitters", type=int, default=None,
+        help="Re-sample count for embeddings (default: 1)",
+    )
+
+    # Clustering options
+    cluster_group = parser.add_argument_group("clustering")
+    cluster_group.add_argument(
+        "--eps", type=float, default=None,
+        help="DBSCAN epsilon threshold (default: 0.5)",
+    )
+    cluster_group.add_argument(
+        "--min-samples", type=int, default=None,
+        help="DBSCAN minimum samples per cluster (default: 2)",
+    )
+    cluster_group.add_argument(
+        "--auto-eps", action="store_true", default=False,
+        help="Automatically estimate eps using k-distance elbow method",
+    )
+
+    # Include options
+    include_group = parser.add_argument_group("include")
+    include_group.add_argument(
+        "--include-unclustered", action="store_true", default=False,
+        help="Include _unclustered folder for unmatched faces",
+    )
+    include_group.add_argument(
+        "--include-no-faces", action="store_true", default=False,
+        help="Include _no_faces folder for images without faces",
+    )
+
+    # Display options
+    display_group = parser.add_argument_group("display")
+    display_group.add_argument(
+        "--json", action="store_true", default=False,
+        help="Output results as JSON",
+    )
+    display_group.add_argument(
+        "-q", "--quiet", action="store_true", default=False,
+        help="Suppress progress output",
+    )
+    display_group.add_argument(
+        "-v", "--verbose", action="store_true", default=False,
+        help="Show detailed log output (warnings and debug info)",
+    )
+
+    # Config file
+    parser.add_argument(
+        "--config", default=None,
+        help="Path to TOML config file",
+    )
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point for visage."""
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+
+    # Configure logging based on verbosity
+    log_level = logging.DEBUG if args.verbose else logging.WARNING
+    logging.basicConfig(
+        level=log_level,
+        format="%(levelname)s [%(name)s] %(message)s",
+        stream=sys.stderr,
+    )
+
+    # Build config from file + CLI overrides
+    overrides = {
+        "copy_mode": not args.move,
+        "detection_confidence": args.min_confidence,
+        "embedding_model": args.model,
+        "num_jitters": args.num_jitters,
+        "dbscan_eps": args.eps,
+        "dbscan_min_samples": args.min_samples,
+        "auto_eps": args.auto_eps,
+        "max_workers": args.max_workers,
+        "include_unclustered": args.include_unclustered,
+        "include_no_faces": args.include_no_faces,
+    }
+
+    config = build_config(
+        config_file=args.config,
+        input_dir=args.input,
+        overrides=overrides,
+    )
+
+    progress = ProgressDisplay(quiet=args.quiet)
+
+    # Check for existing checkpoint (previous interrupted run)
+    cache = EmbeddingCache(args.input)
+    checkpoint = cache.load_checkpoint()
+    if checkpoint is not None:
+        phase = checkpoint.get("phase", 0)
+        msg = checkpoint.get("message", "")
+        cached_images = checkpoint.get("cached_images", 0)
+        cached_faces = checkpoint.get("cached_faces", 0)
+        progress._print(
+            f"  Resuming from phase {phase}/5 — {msg}"
+            f" ({cached_images} images, {cached_faces} faces cached)"
+        )
+    cache.close()
+
+    try:
+        result = run_pipeline(
+            input_path=args.input,
+            config=config,
+            dry_run=args.dry_run,
+            output_dir=args.output_dir,
+            progress=progress,
+        )
+    except KeyboardInterrupt:
+        progress.error("Interrupted by user")
+        return 130
+    except Exception as exc:
+        progress.error(f"Fatal error: {exc}")
+        return 1
+
+    # Output results
+    if args.json:
+        output = {
+            "total_images": result.total_images,
+            "images_with_faces": result.images_with_faces,
+            "total_faces": result.total_faces,
+            "num_clusters": result.num_clusters,
+            "num_noise_faces": result.num_noise_faces,
+            "duration_seconds": round(result.duration_seconds, 2),
+            "errors": result.errors,
+        }
+        if result.organize_plan:
+            output["persons"] = {
+                f"person_{k:02d}": {
+                    "photos": len(v),
+                    "confidence": round(result.cluster_confidences.get(k, 0.0), 3),
+                }
+                for k, v in sorted(result.organize_plan.person_folders.items())
+            }
+        print(json.dumps(output, indent=2))
+    else:
+        # Print summary
+        action = "copied" if config.copy_mode else "moved"
+        summary = (
+            f"\nDone in {result.duration_seconds:.1f}s\n"
+            f"  Images scanned:   {result.total_images}\n"
+            f"  With faces:       {result.images_with_faces}\n"
+            f"  Faces detected:   {result.total_faces}\n"
+            f"  People found:     {result.num_clusters}\n"
+            f"  Unclustered:      {result.num_noise_faces} faces\n"
+        )
+        if not args.dry_run and result.organize_plan:
+            total_files = sum(
+                len(v) for v in result.organize_plan.person_folders.values()
+            )
+            summary += f"  Files {action}:  {total_files}\n"
+        if result.organize_plan and result.cluster_confidences:
+            summary += "\n  Per-person confidence:\n"
+            for cid, paths in sorted(result.organize_plan.person_folders.items()):
+                conf = result.cluster_confidences.get(cid, 0.0)
+                summary += f"    person_{cid:02d}: {conf:.2f} ({len(paths)} photos)\n"
+        if result.errors:
+            summary += f"  Errors:           {len(result.errors)}\n"
+
+        progress.finish(summary)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
