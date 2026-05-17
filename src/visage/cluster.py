@@ -373,10 +373,10 @@ def merge_clusters(
 ) -> ClusterResult:
     """Merge clusters whose centroids are above a cosine similarity threshold.
 
-    Post-clustering merge step that addresses over-segmentation by computing
-    quality-weighted centroids for each cluster and merging pairs whose
-    cosine similarity exceeds the threshold. Uses Union-Find for transitive
-    merging (if A merges with B and B merges with C, all three merge).
+    Uses iterative greedy merging: repeatedly merges the most similar pair,
+    recomputes the merged centroid, and continues until no pair exceeds the
+    threshold. This avoids the transitive chain-merging problem (where A~B
+    and B~C causes all three to merge even if A and C are dissimilar).
 
     Args:
         cluster_result: ClusterResult from cluster_faces().
@@ -391,71 +391,76 @@ def merge_clusters(
     unique_labels = set(cluster_result.labels)
     unique_labels.discard(-1)
     labels = cluster_result.labels.copy()
+    label_list = sorted(unique_labels)
 
-    # Compute centroid for each cluster
-    centroids: dict[int, np.ndarray] = {}
-    for label in unique_labels:
+    if len(label_list) <= 1:
+        return cluster_result
+
+    # Store embeddings per cluster for fast centroid recomputation
+    cluster_embeddings: dict[int, np.ndarray] = {}
+    for label in label_list:
         mask = labels == label
-        cluster_embs = cluster_result.embeddings[mask]
-        centroid = cluster_embs.mean(axis=0)
-        centroid = centroid / (np.linalg.norm(centroid) + 1e-10)
-        centroids[label] = centroid
+        cluster_embeddings[label] = cluster_result.embeddings[mask]
 
-    # Union-Find for transitive merging
-    parent: dict[int, int] = {label: label for label in unique_labels}
+    # Compute initial centroids
+    centroids: dict[int, np.ndarray] = {}
+    for label in label_list:
+        centroid = cluster_embeddings[label].mean(axis=0)
+        centroids[label] = centroid / (np.linalg.norm(centroid) + 1e-10)
 
-    def find(x: int) -> int:
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]  # path compression
-            x = parent[x]
-        return x
+    active = set(label_list)
+    merges_performed = 0
 
-    def union(a: int, b: int) -> None:
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[ra] = rb
+    # Iterative greedy merging: find best pair, merge, recompute centroid
+    while len(active) > 1:
+        best_sim = -1.0
+        best_pair: tuple[int, int] | None = None
+        sorted_active = sorted(active)
+        for i, label_a in enumerate(sorted_active):
+            for label_b in sorted_active[i + 1:]:
+                sim = float(centroids[label_a] @ centroids[label_b])
+                if sim > best_sim:
+                    best_sim = sim
+                    best_pair = (label_a, label_b)
 
-    # Check all pairs for merge eligibility
-    sorted_labels = sorted(unique_labels)
-    for i, label_a in enumerate(sorted_labels):
-        for label_b in sorted_labels[i + 1:]:
-            if find(label_a) == find(label_b):
-                continue  # already in same group
-            sim = float(centroids[label_a] @ centroids[label_b])
-            if sim >= merge_threshold:
-                union(label_a, label_b)
-                logger.debug(
-                    "Merging cluster %d into %d (similarity: %.3f)",
-                    label_a, find(label_a), sim,
-                )
+        if best_pair is None or best_sim < merge_threshold:
+            break
 
-    # Build mapping from old labels to new labels
-    groups: dict[int, list[int]] = {}
-    for label in sorted_labels:
-        root = find(label)
-        if root not in groups:
-            groups[root] = []
-        groups[root].append(label)
+        a, b = best_pair
+        # Merge b into a
+        merged_embs = np.vstack([cluster_embeddings[a], cluster_embeddings[b]])
+        cluster_embeddings[a] = merged_embs
+        centroid = merged_embs.mean(axis=0)
+        centroids[a] = centroid / (np.linalg.norm(centroid) + 1e-10)
 
-    # Assign new sequential labels
+        active.discard(b)
+        del centroids[b]
+        del cluster_embeddings[b]
+        labels[labels == b] = a
+        merges_performed += 1
+
+        logger.debug(
+            "Merging cluster %d into %d (similarity: %.3f)",
+            b, a, best_sim,
+        )
+
+    # Renumber remaining labels to be sequential starting from 0
+    remaining = sorted(active)
     old_to_new: dict[int, int] = {-1: -1}
-    for new_id, (_, members) in enumerate(sorted(groups.items())):
-        for old_label in members:
-            old_to_new[old_label] = new_id
+    for new_id, old_label in enumerate(remaining):
+        old_to_new[old_label] = new_id
 
-    # Remap labels
-    new_labels = np.array([old_to_new[label] for label in labels], dtype=int)
+    new_labels = np.array([old_to_new.get(label, -1) for label in labels], dtype=int)
 
     unique_new = set(new_labels)
     unique_new.discard(-1)
     num_clusters = len(unique_new)
     num_noise = int(np.sum(new_labels == -1))
 
-    merges_performed = len(unique_labels) - num_clusters
     if merges_performed > 0:
         logger.info(
             "Post-clustering merge: %d → %d clusters (%d merges)",
-            len(unique_labels), num_clusters, merges_performed,
+            len(label_list), num_clusters, merges_performed,
         )
 
     return ClusterResult(
