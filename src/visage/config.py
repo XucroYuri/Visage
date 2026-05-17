@@ -37,7 +37,8 @@ class VisageConfig:
     # >0 can trigger sklearn Cython bug with certain datasets
     cluster_selection_epsilon: float = 0.0
     cluster_selection_method: str = "eom"  # "eom" (stable) or "leaf" (fine-grained)
-    merge_threshold: float = 0.65  # cosine similarity threshold for post-clustering merge
+    # higher = less merging (0.85 ≈ 32° centroid angle)
+    merge_threshold: float = 0.85
 
     # Head features (supplementary signal for clustering)
     head_feature_weight: float = 0.2  # weight for head features in composite distance (0–1)

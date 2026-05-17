@@ -369,7 +369,7 @@ def compute_composite_distance(
 
 def merge_clusters(
     cluster_result: ClusterResult,
-    merge_threshold: float = 0.65,
+    merge_threshold: float = 0.85,
 ) -> ClusterResult:
     """Merge clusters whose centroids are above a cosine similarity threshold.
 

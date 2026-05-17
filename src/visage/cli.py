@@ -104,7 +104,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     cluster_group.add_argument(
         "--merge-threshold", type=float, default=None,
-        help="Cosine similarity threshold for merging clusters 0-1 (default: 0.65)",
+        help="Cosine similarity threshold for merging clusters 0-1 (default: 0.85)",
     )
 
     # Include options
