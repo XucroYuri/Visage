@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import time
 
 import numpy as np
@@ -270,3 +269,68 @@ class TestClose:
         cache = EmbeddingCache(str(tmp_path))
         cache.close()
         cache.close()  # Should not raise
+
+
+# ── quality persistence ────────────────────────────────────────────
+
+
+class TestQualityPersistence:
+    def test_quality_stored_and_restored(self, tmp_path):
+        cache = EmbeddingCache(str(tmp_path))
+        f = tmp_path / "photo.jpg"
+        f.write_text("img")
+
+        face = _make_face(str(f))
+        face.quality = 0.85
+        cache.store(str(f), [face])
+        result = cache.lookup(str(f))
+        assert result is not None
+        assert len(result) == 1
+        assert result[0].quality == pytest.approx(0.85)
+        cache.close()
+
+    def test_quality_none_stored_and_restored(self, tmp_path):
+        cache = EmbeddingCache(str(tmp_path))
+        f = tmp_path / "photo.jpg"
+        f.write_text("img")
+
+        face = _make_face(str(f))
+        face.quality = None
+        cache.store(str(f), [face])
+        result = cache.lookup(str(f))
+        assert result is not None
+        assert result[0].quality is None
+        cache.close()
+
+    def test_migration_adds_quality_column(self, tmp_path):
+        """Verify that an old DB without quality column is migrated."""
+        cache = EmbeddingCache(str(tmp_path))
+        # Manually drop and recreate without quality to simulate old schema
+        cache._conn.execute("DROP TABLE face_embeddings")
+        cache._conn.execute("""
+            CREATE TABLE face_embeddings (
+                image_path TEXT NOT NULL,
+                file_fingerprint TEXT NOT NULL,
+                face_index INTEGER NOT NULL,
+                face_box TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                embedding BLOB NOT NULL,
+                model TEXT NOT NULL,
+                num_jitters INTEGER NOT NULL,
+                PRIMARY KEY (image_path, face_index)
+            )
+        """)
+        cache._conn.commit()
+        cache.close()
+
+        # Re-open — migration should add quality column
+        cache2 = EmbeddingCache(str(tmp_path))
+        f = tmp_path / "photo.jpg"
+        f.write_text("img")
+        face = _make_face(str(f))
+        face.quality = 0.42
+        cache2.store(str(f), [face])
+        result = cache2.lookup(str(f))
+        assert result is not None
+        assert result[0].quality == pytest.approx(0.42)
+        cache2.close()

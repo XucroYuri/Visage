@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
+
+import tomllib
 
 SUPPORTED_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".heic", ".heif", ".tif", ".tiff"})
 
@@ -39,13 +40,11 @@ class VisageConfig:
 
     # Output
     copy_mode: bool = True  # True = copy, False = move
-    output_dir: Optional[str] = None  # None = create subdirs inside input folder
+    output_dir: str | None = None  # None = create subdirs inside input folder
     folder_prefix: str = DEFAULT_FOLDER_PREFIX
     include_unclustered: bool = False
     include_no_faces: bool = False
 
-    # HEIC handling
-    heic_converter: str = "pillow_heif"  # "pillow_heif" or "sips"
 
 
 def load_config_from_file(path: Path) -> dict[str, Any]:
@@ -55,7 +54,9 @@ def load_config_from_file(path: Path) -> dict[str, Any]:
     return data
 
 
-def _apply_toml_section(config_dict: dict[str, Any], section: str, mapping: dict[str, str]) -> dict[str, Any]:
+def _apply_toml_section(
+    config_dict: dict[str, Any], section: str, mapping: dict[str, str],
+) -> dict[str, Any]:
     """Apply a TOML section to config dict, renaming keys via mapping."""
     if section not in config_dict:
         return {}
@@ -91,9 +92,9 @@ _TOML_KEY_MAP = {
 
 
 def build_config(
-    config_file: Optional[str] = None,
-    input_dir: Optional[str] = None,
-    overrides: Optional[dict[str, Any]] = None,
+    config_file: str | None = None,
+    input_dir: str | None = None,
+    overrides: dict[str, Any] | None = None,
 ) -> VisageConfig:
     """Build a VisageConfig from file, input directory, and CLI overrides.
 

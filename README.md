@@ -5,8 +5,9 @@ macOS-native face clustering and photo sorting CLI. Scan a folder of photos, det
 ## Features
 
 - Hardware-accelerated face detection via macOS Vision framework
-- 128-dimensional face identity embeddings via face_recognition (dlib)
-- DBSCAN clustering with automatic eps estimation (`--auto-eps`)
+- Pluggable embedding backends: dlib (128-dim) and InsightFace/ArcFace (512-dim, optional)
+- DBSCAN and HDBSCAN clustering with automatic eps estimation (`--auto-eps`)
+- Face quality assessment -- Laplacian blur detection + size ratio filtering
 - Per-cluster confidence scores (cosine similarity to centroid)
 - SQLite embedding cache -- incremental processing on re-runs
 - Checkpoint/resume for interrupted runs
@@ -31,11 +32,11 @@ Input folder
 [2] Detect -- macOS Vision finds faces (fast, hardware-accelerated)
     |
     v
-[3] Embed -- face_recognition generates 128-dim identity vectors
-    |         (cached in SQLite; unchanged images skip re-computation)
+[3] Embed -- pluggable backend generates identity vectors
+    |         (dlib 128-dim or InsightFace 512-dim; cached in SQLite)
     |
     v
-[4] Cluster -- DBSCAN groups faces by person identity
+[4] Cluster -- DBSCAN or HDBSCAN groups faces by person identity
     |
     v
 [5] Organize -- copy/move photos into person_00/, person_01/, ...
@@ -47,9 +48,9 @@ Phase details:
 
 2. **Detect** -- Detects faces in each image using the macOS Vision framework (`VNDetectFaceRectanglesRequest`). Runs in parallel with configurable worker count. Filters by confidence threshold and minimum face size.
 
-3. **Embed** -- Generates a 128-dimensional identity embedding for each detected face using face_recognition (dlib). Results are cached in a SQLite database keyed by file path and mtime fingerprint, so unchanged images skip re-computation on subsequent runs.
+3. **Embed** -- Generates identity embeddings for each detected face using a pluggable backend. The default dlib backend produces 128-dimensional vectors; the optional InsightFace/ArcFace backend produces 512-dimensional vectors for higher accuracy. Results are cached in a SQLite database keyed by file path and mtime fingerprint, so unchanged images skip re-computation on subsequent runs.
 
-4. **Cluster** -- L2-normalizes all embeddings, then clusters them with DBSCAN. Supports a fixed epsilon threshold or automatic estimation via the k-distance elbow method. Faces that do not fit any cluster are labeled as noise.
+4. **Cluster** -- L2-normalizes all embeddings, then clusters them with DBSCAN or HDBSCAN. DBSCAN supports a fixed epsilon threshold or automatic estimation via the k-distance elbow method. HDBSCAN requires no eps parameter and handles clusters of varying density. Faces that do not fit any cluster are labeled as noise.
 
 5. **Organize** -- Copies (or moves) photos into per-person subfolders under the output directory. A photo containing multiple people appears in each matching folder. Optionally includes `_unclustered` and `_no_faces` folders.
 
@@ -140,16 +141,24 @@ visage INPUT [OPTIONS]
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--model` | `small` | Face embedding model: `small` (fast) or `large` (accurate) |
-| `--num-jitters` | `1` | Number of re-samples for embedding generation |
+| `--backend` | `dlib` | Embedding backend: `dlib` (128-dim) or `insightface` (512-dim) |
+| `--model` | `small` | Face embedding model: `small` (fast) or `large` (accurate, dlib only) |
+| `--num-jitters` | `1` | Number of re-samples for embedding generation (dlib only) |
+
+### Quality
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--min-quality` | `0` | Minimum face quality score 0--1 (0 = no filtering) |
 
 ### Clustering
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--eps` | `0.5` | DBSCAN epsilon (max distance between embeddings in a cluster) |
-| `--min-samples` | `2` | DBSCAN minimum samples per cluster |
-| `--auto-eps` | off | Automatically estimate eps using k-distance elbow method |
+| `--cluster-method` | `dbscan` | Clustering algorithm: `dbscan` or `hdbscan` |
+| `--eps` | `0.5` | DBSCAN epsilon (max distance between embeddings in a cluster, DBSCAN only) |
+| `--min-samples` | `2` | Minimum samples per cluster |
+| `--auto-eps` | off | Automatically estimate eps using k-distance elbow method (DBSCAN only) |
 
 ### Include
 
@@ -203,16 +212,21 @@ include_no_faces = false
 - **Missing faces**: lower `--min-confidence` (e.g., 0.3)
 - **Better accuracy**: use `--model large --num-jitters 10` (slower)
 - **Unsure about eps**: use `--auto-eps` to estimate automatically
+- **Varying cluster densities**: use `--cluster-method hdbscan` (no eps parameter needed)
+- **Blurry or small faces**: use `--min-quality 0.3` to filter low-quality face detections
+- **Higher-accuracy embeddings**: use `--backend insightface` for 512-dim ArcFace embeddings
 
 ## Architecture
 
-Visage combines three core technologies:
+Visage combines four core technologies:
 
 - **Face detection**: macOS Vision framework via pyobjc. Runs `VNDetectFaceRectanglesRequest` with multi-threaded batch processing. Returns normalized bounding boxes converted to pixel coordinates.
 
-- **Face embeddings**: face_recognition library (built on dlib). Produces a 128-dimensional vector for each detected face. Two model sizes are available: `small` (fast) and `large` (more accurate). Embeddings are cached in a SQLite database keyed by file path and mtime fingerprint.
+- **Face embeddings**: pluggable backend system (`EmbeddingBackend` protocol). The default dlib backend (via face_recognition) produces 128-dimensional vectors with `small` (fast) and `large` (more accurate) model sizes. The optional InsightFace/ArcFace backend produces 512-dimensional vectors for higher accuracy. Embeddings are cached in a SQLite database keyed by file path and mtime fingerprint.
 
-- **Clustering**: scikit-learn DBSCAN on L2-normalized embeddings. After normalization, euclidean distance is monotonically related to cosine distance. Automatic eps estimation uses the k-distance elbow method (maximum perpendicular distance from the first-to-last line). Each cluster receives a confidence score computed as the mean cosine similarity of member embeddings to the cluster centroid.
+- **Face quality**: Laplacian blur detection combined with face size ratio filtering. Each detected face receives a quality score from 0 to 1, usable with `--min-quality` to filter out blurry or small faces before clustering.
+
+- **Clustering**: DBSCAN or HDBSCAN on L2-normalized embeddings. DBSCAN (scikit-learn) supports a fixed epsilon threshold or automatic estimation via the k-distance elbow method (maximum perpendicular distance from the first-to-last line). HDBSCAN handles clusters of varying density without requiring an eps parameter. After normalization, euclidean distance is monotonically related to cosine distance. Each cluster receives a confidence score computed as the mean cosine similarity of member embeddings to the cluster centroid.
 
 ## License
 

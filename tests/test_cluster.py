@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from visage.cluster import (
     _normalize_embeddings,
@@ -14,7 +13,6 @@ from visage.cluster import (
     extract_embeddings,
 )
 from visage.models import ClusterResult, DetectedFace, FaceBox, ImageResult
-
 
 # ── _normalize_embeddings ─────────────────────────────────────────
 
@@ -40,7 +38,6 @@ class TestNormalizeEmbeddings:
         assert np.linalg.norm(normalized[1]) < 1e-8
 
     def test_single_vector(self):
-        emb = np.array([[3.0, 4.0, 0.0]])
         # Pad to 128 dim for consistency — but function works on any dim
         emb_padded = np.random.randn(1, 128)
         normalized = _normalize_embeddings(emb_padded)
@@ -88,6 +85,24 @@ class TestExtractEmbeddings:
         embeddings, mapping = extract_embeddings([])
         assert embeddings.shape == (0, 128)
         assert mapping == []
+
+    def test_custom_embedding_dim(self):
+        embeddings, mapping = extract_embeddings([], embedding_dim=512)
+        assert embeddings.shape == (0, 512)
+        assert mapping == []
+
+    def test_custom_embedding_dim_with_results(self):
+        face = DetectedFace(
+            face_box=FaceBox(top=10, right=110, bottom=110, left=10),
+            confidence=0.9,
+            embedding=np.random.randn(512).astype(np.float64),
+            image_path="/tmp/test.jpg",
+            face_index=0,
+        )
+        result = ImageResult(path="/tmp/test.jpg", faces=[face])
+        embeddings, mapping = extract_embeddings([result], embedding_dim=512)
+        assert embeddings.shape == (1, 512)
+        assert len(mapping) == 1
 
 
 # ── estimate_eps ──────────────────────────────────────────────────
@@ -211,7 +226,10 @@ class TestBuildClusterMapping:
         labels = np.array([0, 0, -1, 1, 1])
         embeddings = np.random.randn(5, 128)
         result = ClusterResult(labels=labels, embeddings=embeddings, num_clusters=2, num_noise=1)
-        face_to_image = [("/a.jpg", 0), ("/a.jpg", 0), ("/noise.jpg", 0), ("/b.jpg", 0), ("/b.jpg", 0)]
+        face_to_image = [
+            ("/a.jpg", 0), ("/a.jpg", 0), ("/noise.jpg", 0),
+            ("/b.jpg", 0), ("/b.jpg", 0),
+        ]
         mapping = build_cluster_mapping(result, face_to_image)
         # Noise excluded; unique paths per cluster
         assert set(mapping[0]) == {"/a.jpg"}
@@ -271,7 +289,7 @@ class TestComputeClusterConfidences:
         result = cluster_faces(embeddings, eps=1.0, min_samples=2)
         confidences = compute_cluster_confidences(result)
         assert len(confidences) == result.num_clusters
-        for cid, conf in confidences.items():
+        for _cid, conf in confidences.items():
             assert 0.0 <= conf <= 1.0
 
     def test_all_noise(self):

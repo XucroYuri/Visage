@@ -29,11 +29,15 @@ def _normalize_embeddings(embeddings: np.ndarray) -> np.ndarray:
     return embeddings / norms
 
 
-def extract_embeddings(image_results: list[ImageResult]) -> tuple[np.ndarray, list[tuple[str, int]]]:
+def extract_embeddings(
+    image_results: list[ImageResult],
+    embedding_dim: int = 128,
+) -> tuple[np.ndarray, list[tuple[str, int]]]:
     """Extract all valid embeddings from image results.
 
     Args:
         image_results: List of ImageResult with embeddings populated.
+        embedding_dim: Dimensionality of the embedding vectors (default 128 for dlib).
 
     Returns:
         Tuple of:
@@ -52,7 +56,7 @@ def extract_embeddings(image_results: list[ImageResult]) -> tuple[np.ndarray, li
                 face_to_image.append((result.path, face.face_index))
 
     if not embeddings:
-        return np.empty((0, 128)), []
+        return np.empty((0, embedding_dim)), []
 
     return np.stack(embeddings), face_to_image
 
@@ -99,9 +103,11 @@ def estimate_eps(embeddings: np.ndarray, k: int = 5) -> float:
     line_vec = p2 - p1
     line_len = np.linalg.norm(line_vec) or 1
 
-    # Perpendicular distances
+    # Perpendicular distances (explicit 2D formula to avoid np.cross deprecation)
+    # |line_vec x (p1 - point)| / |line_vec| = |dx*(y1-yy) - dy*(x1-xx)| / line_len
+    dx, dy = line_vec
     distances_to_line = np.abs(
-        np.cross(line_vec, p1 - norm_coords)
+        dx * (p1[1] - norm_coords[:, 1]) - dy * (p1[0] - norm_coords[:, 0])
     ) / line_len
 
     elbow_idx = np.argmax(distances_to_line)
@@ -180,7 +186,7 @@ def _cluster_hdbscan(
             "Install it: pip install scikit-learn>=1.3"
         )
 
-    clusterer = HDBSCAN(min_samples=min_samples, metric="euclidean")
+    clusterer = HDBSCAN(min_samples=min_samples, metric="euclidean", copy=False)
     labels = clusterer.fit_predict(normalized)
 
     unique_labels = set(labels)

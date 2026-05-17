@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import time
-from typing import Optional
 
 from .backends import get_backend
 from .cache import EmbeddingCache
-from .cluster import build_cluster_mapping, cluster_faces, compute_cluster_confidences, extract_embeddings
+from .cluster import (
+    build_cluster_mapping,
+    cluster_faces,
+    compute_cluster_confidences,
+    extract_embeddings,
+)
 from .config import DEFAULT_OUTPUT_DIRNAME, VisageConfig
 from .detector import detect_faces_batch
 from .embedder import generate_embeddings_batch
@@ -17,10 +21,10 @@ from .scanner import scan_images
 
 def run_pipeline(
     input_path: str,
-    config: Optional[VisageConfig] = None,
+    config: VisageConfig | None = None,
     dry_run: bool = False,
-    output_dir: Optional[str] = None,
-    progress: Optional[ProgressDisplay] = None,
+    output_dir: str | None = None,
+    progress: ProgressDisplay | None = None,
 ) -> PipelineResult:
     """Execute the full face clustering pipeline.
 
@@ -131,7 +135,9 @@ def run_pipeline(
     # ── Phase 4: Cluster ───────────────────────────────────────────
     prog.update("4/5 Clustering", 0, 1)
 
-    embeddings, face_to_image = extract_embeddings(image_results)
+    embeddings, face_to_image = extract_embeddings(
+        image_results, embedding_dim=backend.embedding_dim,
+    )
 
     if len(embeddings) == 0:
         prog.finish_phase("4/5 Clustering", "No embeddings to cluster")
