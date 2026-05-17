@@ -121,6 +121,9 @@ def cluster_faces(
     auto_eps: bool = False,
     eps_k: int = 5,
     cluster_method: str = "dbscan",
+    min_cluster_size: int = 3,
+    cluster_selection_epsilon: float = 0.0,
+    distance_matrix: np.ndarray | None = None,
 ) -> ClusterResult:
     """Cluster face embeddings using DBSCAN or HDBSCAN.
 
@@ -131,6 +134,9 @@ def cluster_faces(
         auto_eps: If True, estimate eps automatically (DBSCAN only).
         eps_k: k value for eps estimation when auto_eps is True.
         cluster_method: "dbscan" or "hdbscan".
+        min_cluster_size: Minimum cluster size for HDBSCAN.
+        cluster_selection_epsilon: Distance threshold for HDBSCAN cluster selection.
+        distance_matrix: Optional precomputed (N, N) distance matrix for HDBSCAN.
 
     Returns:
         ClusterResult with labels and statistics.
@@ -147,7 +153,21 @@ def cluster_faces(
     normalized = _normalize_embeddings(embeddings)
 
     if cluster_method == "hdbscan":
-        return _cluster_hdbscan(normalized, min_samples)
+        # HDBSCAN requires at least 2 samples
+        if len(normalized) < 2:
+            return ClusterResult(
+                labels=np.full(len(normalized), -1, dtype=int),
+                embeddings=normalized,
+                num_clusters=0,
+                num_noise=len(normalized),
+            )
+        return _cluster_hdbscan(
+            normalized,
+            min_samples=min_samples,
+            min_cluster_size=min_cluster_size,
+            cluster_selection_epsilon=cluster_selection_epsilon,
+            distance_matrix=distance_matrix,
+        )
 
     # Default: DBSCAN
     # Auto-estimate eps if requested
@@ -174,11 +194,21 @@ def cluster_faces(
 def _cluster_hdbscan(
     normalized: np.ndarray,
     min_samples: int = 2,
+    min_cluster_size: int = 3,
+    cluster_selection_epsilon: float = 0.0,
+    distance_matrix: np.ndarray | None = None,
 ) -> ClusterResult:
-    """Cluster using HDBSCAN.
+    """Cluster using HDBSCAN with tunable parameters.
 
     HDBSCAN automatically adapts to varying cluster densities and
     does not require an eps parameter.
+
+    Args:
+        normalized: (N, D) array of L2-normalized embeddings.
+        min_samples: Minimum samples parameter for HDBSCAN.
+        min_cluster_size: Minimum size of a cluster.
+        cluster_selection_epsilon: Distance threshold for cluster merging.
+        distance_matrix: Optional precomputed (N, N) distance matrix.
     """
     if not _HDBSCAN_AVAILABLE:
         raise RuntimeError(
@@ -186,8 +216,26 @@ def _cluster_hdbscan(
             "Install it: pip install scikit-learn>=1.3"
         )
 
-    clusterer = HDBSCAN(min_samples=min_samples, metric="euclidean", copy=False)
-    labels = clusterer.fit_predict(normalized)
+    if distance_matrix is not None:
+        clusterer = HDBSCAN(
+            min_samples=min_samples,
+            min_cluster_size=min_cluster_size,
+            cluster_selection_epsilon=cluster_selection_epsilon,
+            cluster_selection_method="leaf",
+            metric="precomputed",
+            copy=False,
+        )
+        labels = clusterer.fit_predict(distance_matrix)
+    else:
+        clusterer = HDBSCAN(
+            min_samples=min_samples,
+            min_cluster_size=min_cluster_size,
+            cluster_selection_epsilon=cluster_selection_epsilon,
+            cluster_selection_method="leaf",
+            metric="euclidean",
+            copy=False,
+        )
+        labels = clusterer.fit_predict(normalized)
 
     unique_labels = set(labels)
     unique_labels.discard(-1)
@@ -271,3 +319,43 @@ def compute_cluster_confidences(
         confidences[label] = float(np.clip(similarities.mean(), 0.0, 1.0))
 
     return confidences
+
+
+def compute_composite_distance(
+    face_embeddings: np.ndarray,
+    head_features: np.ndarray,
+    head_weight: float = 0.2,
+) -> np.ndarray:
+    """Compute a composite distance matrix from face embeddings and head features.
+
+    Combines L2-normalized face embedding distances with head feature distances
+    using a weighted sum. The face embeddings should already be L2-normalized.
+
+    Args:
+        face_embeddings: (N, D) array of L2-normalized face embeddings.
+        head_features: (N, H) array of head feature vectors.
+        head_weight: Weight for head feature distance (0 = face only, 1 = head only).
+
+    Returns:
+        (N, N) symmetric distance matrix.
+    """
+    face_weight = 1.0 - head_weight
+
+    # Face embedding distance: euclidean on L2-normalized = sqrt(2 - 2*cos_sim)
+    # Use cosine distance directly for better scaling
+    face_sim = face_embeddings @ face_embeddings.T
+    face_dist = np.clip(1.0 - face_sim, 0.0, 2.0)
+
+    if head_weight <= 0.0 or head_features.shape[1] == 0:
+        return face_dist
+
+    # Normalize head features to unit length
+    norms = np.linalg.norm(head_features, axis=1, keepdims=True)
+    norms = np.maximum(norms, 1e-10)
+    head_norm = head_features / norms
+
+    # Head feature distance: cosine distance
+    head_sim = head_norm @ head_norm.T
+    head_dist = np.clip(1.0 - head_sim, 0.0, 2.0)
+
+    return face_weight * face_dist + head_weight * head_dist

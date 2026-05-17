@@ -75,6 +75,8 @@ class EmbeddingCache:
         """)
         # Migration: add quality column if upgrading from older schema
         self._migrate_add_column(conn, "quality", "REAL")
+        # Migration: add head_features column
+        self._migrate_add_column(conn, "head_features", "BLOB")
         conn.commit()
 
     @staticmethod
@@ -114,7 +116,7 @@ class EmbeddingCache:
 
         rows = conn.execute(
             """
-            SELECT face_index, face_box, confidence, embedding, quality
+            SELECT face_index, face_box, confidence, embedding, quality, head_features
             FROM face_embeddings
             WHERE image_path = ? AND file_fingerprint = ?
               AND model = ? AND num_jitters = ?
@@ -127,15 +129,19 @@ class EmbeddingCache:
             return None
 
         faces: list[DetectedFace] = []
-        for face_index, box_json, confidence, emb_blob, quality in rows:
+        for face_index, box_json, confidence, emb_blob, quality, hf_blob in rows:
             box_data = json.loads(box_json)
             face_box = FaceBox(**box_data)
             embedding = np.frombuffer(emb_blob, dtype=np.float64).copy()
+            head_features = None
+            if hf_blob is not None:
+                head_features = np.frombuffer(hf_blob, dtype=np.float64).copy()
             faces.append(DetectedFace(
                 face_box=face_box,
                 confidence=confidence,
                 embedding=embedding,
                 quality=quality,
+                head_features=head_features,
                 image_path=image_path,
                 face_index=face_index,
             ))
@@ -180,15 +186,22 @@ class EmbeddingCache:
                 "left": face.face_box.left,
             })
             emb_blob = face.embedding.astype(np.float64).tobytes()
+            hf_blob = (
+                face.head_features.astype(np.float64).tobytes()
+                if face.head_features is not None
+                else None
+            )
             conn.execute(
                 """
                 INSERT INTO face_embeddings
                     (image_path, file_fingerprint, face_index, face_box,
-                     confidence, embedding, quality, model, num_jitters)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     confidence, embedding, quality, model, num_jitters,
+                     head_features)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (image_path, fingerprint, face.face_index, box_json,
-                 face.confidence, emb_blob, face.quality, model, num_jitters),
+                 face.confidence, emb_blob, face.quality, model, num_jitters,
+                 hf_blob),
             )
 
         conn.commit()

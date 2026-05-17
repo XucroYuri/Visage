@@ -29,9 +29,12 @@ class TestVisageConfigDefaults:
         assert config.embedding_model == "small"
         assert config.num_jitters == 1
         assert config.min_face_quality == 0.0
-        assert config.cluster_method == "dbscan"
+        assert config.cluster_method == "hdbscan"
         assert config.dbscan_eps == 0.5
         assert config.dbscan_min_samples == 2
+        assert config.hdbscan_min_cluster_size == 3
+        assert config.cluster_selection_epsilon == 0.0
+        assert config.head_feature_weight == 0.2
         assert config.auto_eps is False
         assert config.copy_mode is True
         assert config.folder_prefix == "person_"

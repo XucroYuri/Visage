@@ -7,6 +7,7 @@ import numpy as np
 
 from .backends import EmbeddingBackend
 from .cache import EmbeddingCache
+from .head_features import extract_head_features
 from .heic import load_image_as_numpy
 from .models import FaceBox, ImageResult
 from .quality import compute_face_quality
@@ -122,6 +123,10 @@ def generate_embeddings_for_image(
             image_array, face.face_box, model=model, num_jitters=num_jitters,
             backend=backend,
         )
+
+        # Extract head features for improved clustering
+        if face.embedding is not None:
+            face.head_features = extract_head_features(image_array, face.face_box)
 
     # Filter out faces without embeddings (low quality or failed encoding)
     image_result.faces = [f for f in image_result.faces if f.embedding is not None]

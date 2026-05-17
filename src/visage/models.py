@@ -42,6 +42,7 @@ class DetectedFace:
     confidence: float
     embedding: np.ndarray | None = None
     quality: float | None = None
+    head_features: np.ndarray | None = None
     image_path: str = ""
     face_index: int = 0
 

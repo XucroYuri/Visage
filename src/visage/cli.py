@@ -72,7 +72,7 @@ def _build_parser() -> argparse.ArgumentParser:
     cluster_group = parser.add_argument_group("clustering")
     cluster_group.add_argument(
         "--cluster-method", choices=["dbscan", "hdbscan"], default=None,
-        help="Clustering algorithm (default: dbscan)",
+        help="Clustering algorithm (default: hdbscan)",
     )
     cluster_group.add_argument(
         "--eps", type=float, default=None,
@@ -85,6 +85,18 @@ def _build_parser() -> argparse.ArgumentParser:
     cluster_group.add_argument(
         "--auto-eps", action="store_true", default=False,
         help="Automatically estimate eps using k-distance elbow method (DBSCAN only)",
+    )
+    cluster_group.add_argument(
+        "--min-cluster-size", type=int, default=None,
+        help="Minimum cluster size for HDBSCAN (default: 3)",
+    )
+    cluster_group.add_argument(
+        "--cluster-selection-epsilon", type=float, default=None,
+        help="Distance threshold for HDBSCAN cluster selection (default: 0.0)",
+    )
+    cluster_group.add_argument(
+        "--head-feature-weight", type=float, default=None,
+        help="Weight for head features in clustering 0-1 (default: 0.2)",
     )
 
     # Include options
@@ -147,6 +159,9 @@ def main(argv: list[str] | None = None) -> int:
         "dbscan_eps": args.eps,
         "dbscan_min_samples": args.min_samples,
         "auto_eps": args.auto_eps,
+        "hdbscan_min_cluster_size": args.min_cluster_size,
+        "cluster_selection_epsilon": args.cluster_selection_epsilon,
+        "head_feature_weight": args.head_feature_weight,
         "max_workers": args.max_workers,
         "include_unclustered": args.include_unclustered,
         "include_no_faces": args.include_no_faces,

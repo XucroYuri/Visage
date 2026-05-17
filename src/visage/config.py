@@ -29,10 +29,15 @@ class VisageConfig:
     min_face_quality: float = 0.0  # minimum quality score [0, 1]; 0 = no filtering
 
     # Clustering
-    cluster_method: str = "dbscan"  # "dbscan" or "hdbscan"
+    cluster_method: str = "hdbscan"  # "dbscan" or "hdbscan"
     dbscan_eps: float = 0.5  # max distance between embeddings in same cluster — DBSCAN only
     dbscan_min_samples: int = 2  # min faces to form a cluster
     auto_eps: bool = False  # automatically estimate eps using k-distance elbow — DBSCAN only
+    hdbscan_min_cluster_size: int = 3  # minimum cluster size for HDBSCAN
+    cluster_selection_epsilon: float = 0.0  # distance threshold for HDBSCAN cluster selection
+
+    # Head features (supplementary signal for clustering)
+    head_feature_weight: float = 0.2  # weight for head features in composite distance (0–1)
 
     # Processing
     batch_size: int = 100  # images per batch for progress reporting
@@ -80,6 +85,21 @@ class VisageConfig:
             raise ValueError(
                 f"dbscan_min_samples must be >= 1, got {self.dbscan_min_samples}"
             )
+        if self.hdbscan_min_cluster_size < 2:
+            raise ValueError(
+                f"hdbscan_min_cluster_size must be >= 2, "
+                f"got {self.hdbscan_min_cluster_size}"
+            )
+        if self.cluster_selection_epsilon < 0:
+            raise ValueError(
+                f"cluster_selection_epsilon must be >= 0, "
+                f"got {self.cluster_selection_epsilon}"
+            )
+        if not 0.0 <= self.head_feature_weight <= 1.0:
+            raise ValueError(
+                f"head_feature_weight must be 0-1, "
+                f"got {self.head_feature_weight}"
+            )
         if self.max_workers < 1:
             raise ValueError(f"max_workers must be >= 1, got {self.max_workers}")
 
@@ -119,6 +139,9 @@ _TOML_KEY_MAP = {
         "method": "cluster_method",
         "eps": "dbscan_eps",
         "min_samples": "dbscan_min_samples",
+        "min_cluster_size": "hdbscan_min_cluster_size",
+        "cluster_selection_epsilon": "cluster_selection_epsilon",
+        "head_feature_weight": "head_feature_weight",
     },
     "output": {
         "copy_mode": "copy_mode",

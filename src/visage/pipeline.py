@@ -2,21 +2,56 @@ from __future__ import annotations
 
 import time
 
+import numpy as np
+
 from .backends import get_backend
 from .cache import EmbeddingCache
 from .cluster import (
+    _normalize_embeddings,
     build_cluster_mapping,
     cluster_faces,
     compute_cluster_confidences,
+    compute_composite_distance,
     extract_embeddings,
 )
 from .config import DEFAULT_OUTPUT_DIRNAME, VisageConfig
 from .detector import detect_faces_batch
 from .embedder import generate_embeddings_batch
+from .head_features import FEATURE_DIM
 from .models import OrganizePlan, PipelineResult
 from .organizer import build_organize_plan, execute_organize_plan
 from .progress import ProgressDisplay
 from .scanner import scan_images
+
+
+def _extract_head_features(
+    image_results: list,
+    face_to_image: list[tuple[str, int]],
+) -> np.ndarray | None:
+    """Extract head feature vectors aligned with face_to_image ordering.
+
+    Returns (N, FEATURE_DIM) array or None if no head features available.
+    """
+    # Build lookup: (path, face_index) -> DetectedFace
+    face_lookup: dict[tuple[str, int], object] = {}
+    for result in image_results:
+        if result.error:
+            continue
+        for face in result.faces:
+            if face.embedding is not None:
+                face_lookup[(result.path, face.face_index)] = face
+
+    feats: list[np.ndarray] = []
+    for path, face_idx in face_to_image:
+        face = face_lookup.get((path, face_idx))
+        if face is not None and face.head_features is not None:
+            feats.append(face.head_features)
+        else:
+            feats.append(np.zeros(FEATURE_DIM, dtype=np.float64))
+
+    if not feats:
+        return None
+    return np.stack(feats)
 
 
 def run_pipeline(
@@ -173,12 +208,26 @@ def run_pipeline(
             phase_durations=phase_durations,
         )
 
+    # Build composite distance matrix if using head features
+    distance_matrix = None
+    if cfg.head_feature_weight > 0.0 and len(embeddings) > 1:
+        head_feats = _extract_head_features(image_results, face_to_image)
+        if head_feats is not None and head_feats.shape[1] > 0:
+            # L2-normalize embeddings for composite distance
+            normed = _normalize_embeddings(embeddings)
+            distance_matrix = compute_composite_distance(
+                normed, head_feats, head_weight=cfg.head_feature_weight,
+            )
+
     cluster_result = cluster_faces(
         embeddings,
         eps=cfg.dbscan_eps,
         min_samples=cfg.dbscan_min_samples,
         auto_eps=cfg.auto_eps,
         cluster_method=cfg.cluster_method,
+        min_cluster_size=cfg.hdbscan_min_cluster_size,
+        cluster_selection_epsilon=cfg.cluster_selection_epsilon,
+        distance_matrix=distance_matrix,
     )
 
     cluster_mapping = build_cluster_mapping(cluster_result, face_to_image)
