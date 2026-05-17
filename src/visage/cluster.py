@@ -117,12 +117,13 @@ def estimate_eps(embeddings: np.ndarray, k: int = 5) -> float:
 def cluster_faces(
     embeddings: np.ndarray,
     eps: float = 0.5,
-    min_samples: int = 2,
+    min_samples: int = 3,
     auto_eps: bool = False,
     eps_k: int = 5,
-    cluster_method: str = "dbscan",
-    min_cluster_size: int = 3,
+    cluster_method: str = "hdbscan",
+    min_cluster_size: int = 2,
     cluster_selection_epsilon: float = 0.0,
+    cluster_selection_method: str = "eom",
     distance_matrix: np.ndarray | None = None,
 ) -> ClusterResult:
     """Cluster face embeddings using DBSCAN or HDBSCAN.
@@ -135,7 +136,9 @@ def cluster_faces(
         eps_k: k value for eps estimation when auto_eps is True.
         cluster_method: "dbscan" or "hdbscan".
         min_cluster_size: Minimum cluster size for HDBSCAN.
-        cluster_selection_epsilon: Distance threshold for HDBSCAN cluster selection.
+        cluster_selection_epsilon: Distance threshold for HDBSCAN cluster selection
+            (0 = disabled; >0 may trigger sklearn Cython bug with certain data).
+        cluster_selection_method: "eom" (stable, fewer clusters) or "leaf" (fine-grained).
         distance_matrix: Optional precomputed (N, N) distance matrix for HDBSCAN.
 
     Returns:
@@ -166,6 +169,7 @@ def cluster_faces(
             min_samples=min_samples,
             min_cluster_size=min_cluster_size,
             cluster_selection_epsilon=cluster_selection_epsilon,
+            cluster_selection_method=cluster_selection_method,
             distance_matrix=distance_matrix,
         )
 
@@ -193,9 +197,10 @@ def cluster_faces(
 
 def _cluster_hdbscan(
     normalized: np.ndarray,
-    min_samples: int = 2,
-    min_cluster_size: int = 3,
+    min_samples: int = 3,
+    min_cluster_size: int = 2,
     cluster_selection_epsilon: float = 0.0,
+    cluster_selection_method: str = "eom",
     distance_matrix: np.ndarray | None = None,
 ) -> ClusterResult:
     """Cluster using HDBSCAN with tunable parameters.
@@ -208,6 +213,7 @@ def _cluster_hdbscan(
         min_samples: Minimum samples parameter for HDBSCAN.
         min_cluster_size: Minimum size of a cluster.
         cluster_selection_epsilon: Distance threshold for cluster merging.
+        cluster_selection_method: "eom" (stable) or "leaf" (fine-grained).
         distance_matrix: Optional precomputed (N, N) distance matrix.
     """
     if not _HDBSCAN_AVAILABLE:
@@ -221,7 +227,7 @@ def _cluster_hdbscan(
             min_samples=min_samples,
             min_cluster_size=min_cluster_size,
             cluster_selection_epsilon=cluster_selection_epsilon,
-            cluster_selection_method="leaf",
+            cluster_selection_method=cluster_selection_method,
             metric="precomputed",
             copy=False,
         )
@@ -231,7 +237,7 @@ def _cluster_hdbscan(
             min_samples=min_samples,
             min_cluster_size=min_cluster_size,
             cluster_selection_epsilon=cluster_selection_epsilon,
-            cluster_selection_method="leaf",
+            cluster_selection_method=cluster_selection_method,
             metric="euclidean",
             copy=False,
         )
@@ -359,3 +365,103 @@ def compute_composite_distance(
     head_dist = np.clip(1.0 - head_sim, 0.0, 2.0)
 
     return face_weight * face_dist + head_weight * head_dist
+
+
+def merge_clusters(
+    cluster_result: ClusterResult,
+    merge_threshold: float = 0.65,
+) -> ClusterResult:
+    """Merge clusters whose centroids are above a cosine similarity threshold.
+
+    Post-clustering merge step that addresses over-segmentation by computing
+    quality-weighted centroids for each cluster and merging pairs whose
+    cosine similarity exceeds the threshold. Uses Union-Find for transitive
+    merging (if A merges with B and B merges with C, all three merge).
+
+    Args:
+        cluster_result: ClusterResult from cluster_faces().
+        merge_threshold: Minimum cosine similarity between centroids to merge.
+
+    Returns:
+        New ClusterResult with merged labels and updated statistics.
+    """
+    if merge_threshold <= 0.0 or cluster_result.num_clusters <= 1:
+        return cluster_result
+
+    unique_labels = set(cluster_result.labels)
+    unique_labels.discard(-1)
+    labels = cluster_result.labels.copy()
+
+    # Compute centroid for each cluster
+    centroids: dict[int, np.ndarray] = {}
+    for label in unique_labels:
+        mask = labels == label
+        cluster_embs = cluster_result.embeddings[mask]
+        centroid = cluster_embs.mean(axis=0)
+        centroid = centroid / (np.linalg.norm(centroid) + 1e-10)
+        centroids[label] = centroid
+
+    # Union-Find for transitive merging
+    parent: dict[int, int] = {label: label for label in unique_labels}
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]  # path compression
+            x = parent[x]
+        return x
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    # Check all pairs for merge eligibility
+    sorted_labels = sorted(unique_labels)
+    for i, label_a in enumerate(sorted_labels):
+        for label_b in sorted_labels[i + 1:]:
+            if find(label_a) == find(label_b):
+                continue  # already in same group
+            sim = float(centroids[label_a] @ centroids[label_b])
+            if sim >= merge_threshold:
+                union(label_a, label_b)
+                logger.debug(
+                    "Merging cluster %d into %d (similarity: %.3f)",
+                    label_a, find(label_a), sim,
+                )
+
+    # Build mapping from old labels to new labels
+    groups: dict[int, list[int]] = {}
+    for label in sorted_labels:
+        root = find(label)
+        if root not in groups:
+            groups[root] = []
+        groups[root].append(label)
+
+    # Assign new sequential labels
+    old_to_new: dict[int, int] = {-1: -1}
+    for new_id, (_, members) in enumerate(sorted(groups.items())):
+        for old_label in members:
+            old_to_new[old_label] = new_id
+
+    # Remap labels
+    new_labels = np.array([old_to_new[label] for label in labels], dtype=int)
+
+    unique_new = set(new_labels)
+    unique_new.discard(-1)
+    num_clusters = len(unique_new)
+    num_noise = int(np.sum(new_labels == -1))
+
+    merges_performed = len(unique_labels) - num_clusters
+    if merges_performed > 0:
+        logger.info(
+            "Post-clustering merge: %d → %d clusters (%d merges)",
+            len(unique_labels), num_clusters, merges_performed,
+        )
+
+    return ClusterResult(
+        labels=new_labels,
+        embeddings=cluster_result.embeddings,
+        num_clusters=num_clusters,
+        num_noise=num_noise,
+        probabilities=cluster_result.probabilities,
+    )

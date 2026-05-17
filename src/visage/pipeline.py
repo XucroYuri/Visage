@@ -13,6 +13,7 @@ from .cluster import (
     compute_cluster_confidences,
     compute_composite_distance,
     extract_embeddings,
+    merge_clusters,
 )
 from .config import DEFAULT_OUTPUT_DIRNAME, VisageConfig
 from .detector import detect_faces_batch
@@ -27,10 +28,12 @@ from .scanner import scan_images
 def _extract_head_features(
     image_results: list,
     face_to_image: list[tuple[str, int]],
-) -> np.ndarray | None:
+) -> tuple[np.ndarray | None, np.ndarray]:
     """Extract head feature vectors aligned with face_to_image ordering.
 
-    Returns (N, FEATURE_DIM) array or None if no head features available.
+    Returns:
+        Tuple of ((N, FEATURE_DIM) array or None, (N,) boolean mask of valid features).
+        Missing head features use zero vectors and are marked False in the mask.
     """
     # Build lookup: (path, face_index) -> DetectedFace
     face_lookup: dict[tuple[str, int], object] = {}
@@ -42,16 +45,19 @@ def _extract_head_features(
                 face_lookup[(result.path, face.face_index)] = face
 
     feats: list[np.ndarray] = []
+    valid_mask: list[bool] = []
     for path, face_idx in face_to_image:
         face = face_lookup.get((path, face_idx))
         if face is not None and face.head_features is not None:
             feats.append(face.head_features)
+            valid_mask.append(True)
         else:
             feats.append(np.zeros(FEATURE_DIM, dtype=np.float64))
+            valid_mask.append(False)
 
     if not feats:
-        return None
-    return np.stack(feats)
+        return None, np.array([], dtype=bool)
+    return np.stack(feats), np.array(valid_mask)
 
 
 def run_pipeline(
@@ -211,13 +217,23 @@ def run_pipeline(
     # Build composite distance matrix if using head features
     distance_matrix = None
     if cfg.head_feature_weight > 0.0 and len(embeddings) > 1:
-        head_feats = _extract_head_features(image_results, face_to_image)
+        head_result = _extract_head_features(image_results, face_to_image)
+        head_feats, head_valid = head_result
         if head_feats is not None and head_feats.shape[1] > 0:
             # L2-normalize embeddings for composite distance
             normed = _normalize_embeddings(embeddings)
             distance_matrix = compute_composite_distance(
                 normed, head_feats, head_weight=cfg.head_feature_weight,
             )
+            # Fix zero-vector entries: use face-only distance for pairs
+            # where either face has missing head features
+            if not head_valid.all():
+                face_sim = normed @ normed.T
+                face_only_dist = np.clip(1.0 - face_sim, 0.0, 2.0)
+                invalid = ~head_valid
+                # For any pair where either face is invalid, use face-only distance
+                use_face_only = invalid[:, None] | invalid[None, :]
+                distance_matrix = np.where(use_face_only, face_only_dist, distance_matrix)
 
     cluster_result = cluster_faces(
         embeddings,
@@ -227,8 +243,15 @@ def run_pipeline(
         cluster_method=cfg.cluster_method,
         min_cluster_size=cfg.hdbscan_min_cluster_size,
         cluster_selection_epsilon=cfg.cluster_selection_epsilon,
+        cluster_selection_method=cfg.cluster_selection_method,
         distance_matrix=distance_matrix,
     )
+
+    # Post-clustering merge: combine over-segmented clusters
+    if cfg.merge_threshold > 0.0:
+        cluster_result = merge_clusters(
+            cluster_result, merge_threshold=cfg.merge_threshold,
+        )
 
     cluster_mapping = build_cluster_mapping(cluster_result, face_to_image)
     cluster_confidences = compute_cluster_confidences(cluster_result)

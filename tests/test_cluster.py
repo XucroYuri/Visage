@@ -134,7 +134,7 @@ class TestEstimateEps:
 class TestClusterFaces:
     def test_two_clusters(self, clusterable_embeddings):
         embeddings, _ = clusterable_embeddings
-        result = cluster_faces(embeddings, eps=1.0, min_samples=2)
+        result = cluster_faces(embeddings, eps=1.0, min_samples=2, cluster_method="dbscan")
         assert result.num_clusters == 2
         assert result.num_noise == 0
         assert len(result.labels) == 20
@@ -149,31 +149,30 @@ class TestClusterFaces:
         # Spread-out embeddings with small eps
         np.random.seed(99)
         embeddings = np.random.randn(10, 128) * 5.0
-        result = cluster_faces(embeddings, eps=0.1, min_samples=2)
+        result = cluster_faces(embeddings, eps=0.1, min_samples=2, cluster_method="dbscan")
         assert result.num_clusters == 0
         assert result.num_noise == 10
 
     def test_auto_eps(self, clusterable_embeddings):
         embeddings, _ = clusterable_embeddings
-        result = cluster_faces(embeddings, auto_eps=True, min_samples=2)
+        result = cluster_faces(embeddings, auto_eps=True, min_samples=2, cluster_method="dbscan")
         assert result.num_clusters >= 1
         assert len(result.labels) == 20
 
     def test_single_face(self):
         emb = np.random.randn(1, 128)
-        result = cluster_faces(emb, eps=0.5, min_samples=2)
-        # Single face is always noise with min_samples=2
+        result = cluster_faces(emb, eps=0.5, min_samples=2, cluster_method="dbscan")
         assert result.num_clusters == 0
         assert result.num_noise == 1
 
     def test_labels_match_embeddings_count(self, clusterable_embeddings):
         embeddings, _ = clusterable_embeddings
-        result = cluster_faces(embeddings, eps=0.5, min_samples=2)
+        result = cluster_faces(embeddings, eps=0.5, min_samples=2, cluster_method="dbscan")
         assert len(result.labels) == len(embeddings)
 
     def test_result_contains_normalized_embeddings(self, clusterable_embeddings):
         embeddings, _ = clusterable_embeddings
-        result = cluster_faces(embeddings, eps=0.5, min_samples=2)
+        result = cluster_faces(embeddings, eps=0.5, min_samples=2, cluster_method="dbscan")
         # Result embeddings should be L2-normalized
         norms = np.linalg.norm(result.embeddings, axis=1)
         np.testing.assert_allclose(norms, 1.0, atol=1e-10)
@@ -208,7 +207,7 @@ class TestClusterFacesHDBSCAN:
 
     def test_hdbscan_default_method_is_dbscan(self, clusterable_embeddings):
         embeddings, _ = clusterable_embeddings
-        result = cluster_faces(embeddings, eps=1.0, min_samples=2)
+        result = cluster_faces(embeddings, eps=1.0, min_samples=2, cluster_method="dbscan")
         assert result.probabilities is None  # DBSCAN has no probabilities
 
 
@@ -218,7 +217,7 @@ class TestClusterFacesHDBSCAN:
 class TestBuildClusterMapping:
     def test_basic_mapping(self, clusterable_embeddings):
         embeddings, face_to_image = clusterable_embeddings
-        result = cluster_faces(embeddings, eps=1.0, min_samples=2)
+        result = cluster_faces(embeddings, eps=1.0, min_samples=2, cluster_method="dbscan")
         mapping = build_cluster_mapping(result, face_to_image)
         assert len(mapping) == result.num_clusters
 
@@ -286,7 +285,7 @@ class TestComputeClusterConfidences:
 
     def test_multiple_clusters(self, clusterable_embeddings):
         embeddings, _ = clusterable_embeddings
-        result = cluster_faces(embeddings, eps=1.0, min_samples=2)
+        result = cluster_faces(embeddings, eps=1.0, min_samples=2, cluster_method="dbscan")
         confidences = compute_cluster_confidences(result)
         assert len(confidences) == result.num_clusters
         for _cid, conf in confidences.items():
@@ -301,7 +300,7 @@ class TestComputeClusterConfidences:
 
     def test_confidence_range(self, clusterable_embeddings):
         embeddings, _ = clusterable_embeddings
-        result = cluster_faces(embeddings, eps=1.0, min_samples=2)
+        result = cluster_faces(embeddings, eps=1.0, min_samples=2, cluster_method="dbscan")
         confidences = compute_cluster_confidences(result)
         for conf in confidences.values():
             assert 0.0 <= conf <= 1.0

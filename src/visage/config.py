@@ -31,10 +31,13 @@ class VisageConfig:
     # Clustering
     cluster_method: str = "hdbscan"  # "dbscan" or "hdbscan"
     dbscan_eps: float = 0.5  # max distance between embeddings in same cluster — DBSCAN only
-    dbscan_min_samples: int = 2  # min faces to form a cluster
+    dbscan_min_samples: int = 3  # min faces to form a cluster (also used as HDBSCAN min_samples)
     auto_eps: bool = False  # automatically estimate eps using k-distance elbow — DBSCAN only
-    hdbscan_min_cluster_size: int = 3  # minimum cluster size for HDBSCAN
-    cluster_selection_epsilon: float = 0.0  # distance threshold for HDBSCAN cluster selection
+    hdbscan_min_cluster_size: int = 2  # minimum cluster size for HDBSCAN
+    # >0 can trigger sklearn Cython bug with certain datasets
+    cluster_selection_epsilon: float = 0.0
+    cluster_selection_method: str = "eom"  # "eom" (stable) or "leaf" (fine-grained)
+    merge_threshold: float = 0.65  # cosine similarity threshold for post-clustering merge
 
     # Head features (supplementary signal for clustering)
     head_feature_weight: float = 0.2  # weight for head features in composite distance (0–1)
@@ -95,6 +98,16 @@ class VisageConfig:
                 f"cluster_selection_epsilon must be >= 0, "
                 f"got {self.cluster_selection_epsilon}"
             )
+        if self.cluster_selection_method not in ("eom", "leaf"):
+            raise ValueError(
+                f"cluster_selection_method must be 'eom' or 'leaf', "
+                f"got {self.cluster_selection_method!r}"
+            )
+        if not 0.0 <= self.merge_threshold <= 1.0:
+            raise ValueError(
+                f"merge_threshold must be 0-1, "
+                f"got {self.merge_threshold}"
+            )
         if not 0.0 <= self.head_feature_weight <= 1.0:
             raise ValueError(
                 f"head_feature_weight must be 0-1, "
@@ -141,7 +154,9 @@ _TOML_KEY_MAP = {
         "min_samples": "dbscan_min_samples",
         "min_cluster_size": "hdbscan_min_cluster_size",
         "cluster_selection_epsilon": "cluster_selection_epsilon",
+        "cluster_selection_method": "cluster_selection_method",
         "head_feature_weight": "head_feature_weight",
+        "merge_threshold": "merge_threshold",
     },
     "output": {
         "copy_mode": "copy_mode",

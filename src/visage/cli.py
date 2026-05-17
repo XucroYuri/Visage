@@ -92,11 +92,19 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     cluster_group.add_argument(
         "--cluster-selection-epsilon", type=float, default=None,
-        help="Distance threshold for HDBSCAN cluster selection (default: 0.0)",
+        help="HDBSCAN cluster selection epsilon (default: 0, disabled; >0 may hit sklearn bug)",
     )
     cluster_group.add_argument(
         "--head-feature-weight", type=float, default=None,
         help="Weight for head features in clustering 0-1 (default: 0.2)",
+    )
+    cluster_group.add_argument(
+        "--cluster-selection-method", choices=["eom", "leaf"], default=None,
+        help="HDBSCAN cluster selection method (default: eom)",
+    )
+    cluster_group.add_argument(
+        "--merge-threshold", type=float, default=None,
+        help="Cosine similarity threshold for merging clusters 0-1 (default: 0.65)",
     )
 
     # Include options
@@ -161,7 +169,9 @@ def main(argv: list[str] | None = None) -> int:
         "auto_eps": args.auto_eps,
         "hdbscan_min_cluster_size": args.min_cluster_size,
         "cluster_selection_epsilon": args.cluster_selection_epsilon,
+        "cluster_selection_method": args.cluster_selection_method,
         "head_feature_weight": args.head_feature_weight,
+        "merge_threshold": args.merge_threshold,
         "max_workers": args.max_workers,
         "include_unclustered": args.include_unclustered,
         "include_no_faces": args.include_no_faces,
