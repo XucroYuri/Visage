@@ -34,7 +34,7 @@ def scan_images(
         ]
         for filename in filenames:
             if is_supported_image(filename, extensions):
-                images.append(str(Path(dirpath) / filename))
+                images.append(str((Path(dirpath) / filename).resolve()))
 
     images.sort()
     return images

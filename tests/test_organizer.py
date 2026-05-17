@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import os
 
-import pytest
-
 from visage.models import DetectedFace, FaceBox, ImageResult, OrganizePlan
 from visage.organizer import (
     _unique_dest_path,
@@ -14,7 +12,12 @@ from visage.organizer import (
 )
 
 
-def _make_result(path: str, faces: int = 0, error: str | None = None, skipped: bool = False) -> ImageResult:
+def _make_result(
+    path: str,
+    faces: int = 0,
+    error: str | None = None,
+    skipped: bool = False,
+) -> ImageResult:
     """Helper to build ImageResult for organizer tests."""
     face_list = []
     for i in range(faces):

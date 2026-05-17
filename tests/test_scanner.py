@@ -8,7 +8,6 @@ import pytest
 
 from visage.scanner import is_supported_image, scan_images
 
-
 # ── is_supported_image ────────────────────────────────────────────
 
 

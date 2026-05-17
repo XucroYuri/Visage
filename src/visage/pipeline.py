@@ -25,6 +25,7 @@ def run_pipeline(
     dry_run: bool = False,
     output_dir: str | None = None,
     progress: ProgressDisplay | None = None,
+    cache: EmbeddingCache | None = None,
 ) -> PipelineResult:
     """Execute the full face clustering pipeline.
 
@@ -40,6 +41,7 @@ def run_pipeline(
         dry_run: If True, show plan without copying files.
         output_dir: Override output directory.
         progress: Progress display instance.
+        cache: Optional EmbeddingCache (created if not provided).
 
     Returns:
         PipelineResult with full statistics and plan.
@@ -47,15 +49,21 @@ def run_pipeline(
     cfg = config or VisageConfig()
     prog = progress or ProgressDisplay()
     errors: list[str] = []
+    phase_durations: dict[str, float] = {}
     start_time = time.time()
-    cache = EmbeddingCache(input_path)
+    own_cache = cache is None
+    if cache is None:
+        cache = EmbeddingCache(input_path)
 
     # ── Phase 1: Scan ──────────────────────────────────────────────
+    phase_start = time.time()
     prog.update("1/5 Scan", 0, 1)
     try:
         image_paths = scan_images(input_path)
     except ValueError as exc:
         prog.error(str(exc))
+        if own_cache:
+            cache.close()
         return PipelineResult(
             total_images=0, images_with_faces=0, total_faces=0,
             num_clusters=0, num_noise_faces=0,
@@ -63,17 +71,23 @@ def run_pipeline(
         )
 
     total_images = len(image_paths)
+    phase_durations["scan"] = time.time() - phase_start
     prog.finish_phase("1/5 Scan", f"Found {total_images} images")
     cache.save_checkpoint(1, message=f"Scanned {total_images} images")
 
     if total_images == 0:
+        if own_cache:
+            cache.close()
         return PipelineResult(
             total_images=0, images_with_faces=0, total_faces=0,
             num_clusters=0, num_noise_faces=0,
             errors=["No images found"], duration_seconds=time.time() - start_time,
+            phase_durations=phase_durations,
         )
 
     # ── Phase 2: Detect faces ──────────────────────────────────────
+    phase_start = time.time()
+
     def detection_progress(completed: int, total: int) -> None:
         prog.update("2/5 Detection", completed, total)
 
@@ -90,6 +104,7 @@ def run_pipeline(
     detection_errors = sum(1 for r in image_results if r.error)
     errors.extend(r.error for r in image_results if r.error)
 
+    phase_durations["detection"] = time.time() - phase_start
     prog.finish_phase(
         "2/5 Detection",
         f"{images_with_faces} images with faces, {total_faces} faces detected"
@@ -98,13 +113,18 @@ def run_pipeline(
     cache.save_checkpoint(2, message=f"{total_faces} faces in {images_with_faces} images")
 
     if images_with_faces == 0:
+        if own_cache:
+            cache.close()
         return PipelineResult(
             total_images=total_images, images_with_faces=0, total_faces=0,
             num_clusters=0, num_noise_faces=0, errors=errors,
             duration_seconds=time.time() - start_time,
+            phase_durations=phase_durations,
         )
 
     # ── Phase 3: Generate embeddings ───────────────────────────────
+    phase_start = time.time()
+
     def embedding_progress(completed: int, total: int) -> None:
         prog.update("3/5 Embedding", completed, total)
 
@@ -129,10 +149,12 @@ def run_pipeline(
         len(r.faces) for r in image_results if r.faces
     )
     cache_msg = f", {cache_hits} from cache" if cache_hits > 0 else ""
+    phase_durations["embedding"] = time.time() - phase_start
     prog.finish_phase("3/5 Embedding", f"{faces_with_embeddings} faces encoded{cache_msg}")
     cache.save_checkpoint(3, message=f"{faces_with_embeddings} embeddings ({cache_hits} cached)")
 
     # ── Phase 4: Cluster ───────────────────────────────────────────
+    phase_start = time.time()
     prog.update("4/5 Clustering", 0, 1)
 
     embeddings, face_to_image = extract_embeddings(
@@ -140,11 +162,15 @@ def run_pipeline(
     )
 
     if len(embeddings) == 0:
+        phase_durations["clustering"] = time.time() - phase_start
         prog.finish_phase("4/5 Clustering", "No embeddings to cluster")
+        if own_cache:
+            cache.close()
         return PipelineResult(
             total_images=total_images, images_with_faces=images_with_faces,
             total_faces=total_faces, num_clusters=0, num_noise_faces=0,
             errors=errors, duration_seconds=time.time() - start_time,
+            phase_durations=phase_durations,
         )
 
     cluster_result = cluster_faces(
@@ -158,6 +184,7 @@ def run_pipeline(
     cluster_mapping = build_cluster_mapping(cluster_result, face_to_image)
     cluster_confidences = compute_cluster_confidences(cluster_result)
 
+    phase_durations["clustering"] = time.time() - phase_start
     prog.finish_phase(
         "4/5 Clustering",
         f"{cluster_result.num_clusters} people identified, "
@@ -166,6 +193,7 @@ def run_pipeline(
     cache.save_checkpoint(4, message=f"{cluster_result.num_clusters} clusters found")
 
     # ── Phase 5: Organize ──────────────────────────────────────────
+    phase_start = time.time()
     # Determine output directory
     if output_dir:
         out = output_dir
@@ -204,9 +232,13 @@ def run_pipeline(
             f"{stats.get(action, 0)} files {action} to {out}",
         )
 
+    phase_durations["organize"] = time.time() - phase_start
     duration = time.time() - start_time
 
     cache.clear_checkpoint()
+    if own_cache:
+        cache.close()
+
     return PipelineResult(
         total_images=total_images,
         images_with_faces=images_with_faces,
@@ -216,6 +248,7 @@ def run_pipeline(
         organize_plan=plan,
         cluster_confidences=cluster_confidences,
         duration_seconds=duration,
+        phase_durations=phase_durations,
         errors=errors,
     )
 

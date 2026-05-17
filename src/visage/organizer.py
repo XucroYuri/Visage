@@ -3,11 +3,11 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
 
 from .config import DEFAULT_FOLDER_PREFIX
-from .models import ClusterResult, ImageResult, OrganizePlan
+from .models import ImageResult, OrganizePlan
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ def execute_organize_plan(
     folder_prefix: str = DEFAULT_FOLDER_PREFIX,
     copy_mode: bool = True,
     dry_run: bool = False,
-    progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> dict[str, int]:
     """Execute the organize plan: copy/move files into subfolders.
 

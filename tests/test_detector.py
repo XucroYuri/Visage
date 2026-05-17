@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 from PIL import Image
 
 from visage.models import FaceBox, ImageResult
 
-
 # ── Helpers ───────────────────────────────────────────────────────
 
 
-def _make_mock_observation(confidence: float = 0.9, x: float = 0.1, y: float = 0.2, w: float = 0.3, h: float = 0.4) -> MagicMock:
+def _make_mock_observation(
+    confidence: float = 0.9,
+    x: float = 0.1,
+    y: float = 0.2,
+    w: float = 0.3,
+    h: float = 0.4,
+) -> MagicMock:
     """Create a mock Vision observation with known bounding box and confidence."""
     obs = MagicMock()
     obs.confidence.return_value = confidence
@@ -91,7 +95,7 @@ class TestDetectFaces:
         img = Image.new("RGB", (800, 600), color=(100, 100, 100))
         img.save(img_path, "JPEG")
 
-        obs = _make_mock_observation(confidence=0.9, x=0.1, y=0.2, w=0.3, h=0.4)
+        _obs = _make_mock_observation(confidence=0.9, x=0.1, y=0.2, w=0.3, h=0.4)
 
         with patch("visage.detector.detect_faces") as mock_detect:
             mock_detect.return_value = [(FaceBox(top=320, right=400, bottom=160, left=100), 0.9)]

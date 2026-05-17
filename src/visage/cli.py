@@ -7,7 +7,7 @@ import sys
 
 from . import __version__
 from .cache import EmbeddingCache
-from .config import VisageConfig, build_config
+from .config import build_config
 from .pipeline import run_pipeline
 from .progress import ProgressDisplay
 
@@ -152,15 +152,19 @@ def main(argv: list[str] | None = None) -> int:
         "include_no_faces": args.include_no_faces,
     }
 
-    config = build_config(
-        config_file=args.config,
-        input_dir=args.input,
-        overrides=overrides,
-    )
+    try:
+        config = build_config(
+            config_file=args.config,
+            input_dir=args.input,
+            overrides=overrides,
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
 
     progress = ProgressDisplay(quiet=args.quiet)
 
-    # Check for existing checkpoint (previous interrupted run)
+    # Create a single cache instance for both checkpoint display and pipeline
     cache = EmbeddingCache(args.input)
     checkpoint = cache.load_checkpoint()
     if checkpoint is not None:
@@ -172,7 +176,6 @@ def main(argv: list[str] | None = None) -> int:
             f"  Resuming from phase {phase}/5 — {msg}"
             f" ({cached_images} images, {cached_faces} faces cached)"
         )
-    cache.close()
 
     try:
         result = run_pipeline(
@@ -181,13 +184,17 @@ def main(argv: list[str] | None = None) -> int:
             dry_run=args.dry_run,
             output_dir=args.output_dir,
             progress=progress,
+            cache=cache,
         )
     except KeyboardInterrupt:
         progress.error("Interrupted by user")
         return 130
     except Exception as exc:
         progress.error(f"Fatal error: {exc}")
+        cache.close()
         return 1
+    finally:
+        cache.close()
 
     # Output results
     if args.json:
@@ -198,15 +205,22 @@ def main(argv: list[str] | None = None) -> int:
             "num_clusters": result.num_clusters,
             "num_noise_faces": result.num_noise_faces,
             "duration_seconds": round(result.duration_seconds, 2),
+            "phase_durations": {
+                k: round(v, 3) for k, v in result.phase_durations.items()
+            },
             "errors": result.errors,
         }
         if result.organize_plan:
             output["persons"] = {
                 f"person_{k:02d}": {
                     "photos": len(v),
-                    "confidence": round(result.cluster_confidences.get(k, 0.0), 3),
+                    "confidence": round(
+                        result.cluster_confidences.get(k, 0.0), 3
+                    ),
                 }
-                for k, v in sorted(result.organize_plan.person_folders.items())
+                for k, v in sorted(
+                    result.organize_plan.person_folders.items()
+                )
             }
         print(json.dumps(output, indent=2))
     else:
@@ -225,9 +239,15 @@ def main(argv: list[str] | None = None) -> int:
                 len(v) for v in result.organize_plan.person_folders.values()
             )
             summary += f"  Files {action}:  {total_files}\n"
+        if result.phase_durations:
+            summary += "\n  Phase timings:\n"
+            for phase_name, dur in result.phase_durations.items():
+                summary += f"    {phase_name}: {dur:.2f}s\n"
         if result.organize_plan and result.cluster_confidences:
             summary += "\n  Per-person confidence:\n"
-            for cid, paths in sorted(result.organize_plan.person_folders.items()):
+            for cid, paths in sorted(
+                result.organize_plan.person_folders.items()
+            ):
                 conf = result.cluster_confidences.get(cid, 0.0)
                 summary += f"    person_{cid:02d}: {conf:.2f} ({len(paths)} photos)\n"
         if result.errors:

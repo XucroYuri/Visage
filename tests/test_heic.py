@@ -11,7 +11,6 @@ from PIL import Image
 
 from visage.heic import load_image_as_numpy, load_image_as_pil
 
-
 # ── Standard format loading (real PIL, no mocking) ────────────────
 
 
@@ -104,7 +103,10 @@ class TestLoadHeic:
         heic_file.write_text("fake-heic")
 
         with patch("visage.heic._HEIF_AVAILABLE", False):
-            with patch("visage.heic.subprocess.run", side_effect=subprocess.TimeoutExpired("sips", 30)):
+            with patch(
+                "visage.heic.subprocess.run",
+                side_effect=subprocess.TimeoutExpired("sips", 30),
+            ):
                 with pytest.raises(ValueError, match="timed out"):
                     load_image_as_pil(str(heic_file))
 

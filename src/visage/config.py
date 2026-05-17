@@ -45,6 +45,44 @@ class VisageConfig:
     include_unclustered: bool = False
     include_no_faces: bool = False
 
+    def __post_init__(self) -> None:
+        """Validate configuration values."""
+        if not 0.0 <= self.detection_confidence <= 1.0:
+            raise ValueError(
+                f"detection_confidence must be 0-1, got {self.detection_confidence}"
+            )
+        if self.min_face_size < 1:
+            raise ValueError(f"min_face_size must be >= 1, got {self.min_face_size}")
+        if self.embedding_backend not in ("dlib", "insightface"):
+            raise ValueError(
+                f"embedding_backend must be 'dlib' or 'insightface', "
+                f"got {self.embedding_backend!r}"
+            )
+        if self.embedding_model not in ("small", "large"):
+            raise ValueError(
+                f"embedding_model must be 'small' or 'large', "
+                f"got {self.embedding_model!r}"
+            )
+        if self.num_jitters < 1:
+            raise ValueError(f"num_jitters must be >= 1, got {self.num_jitters}")
+        if not 0.0 <= self.min_face_quality <= 1.0:
+            raise ValueError(
+                f"min_face_quality must be 0-1, got {self.min_face_quality}"
+            )
+        if self.cluster_method not in ("dbscan", "hdbscan"):
+            raise ValueError(
+                f"cluster_method must be 'dbscan' or 'hdbscan', "
+                f"got {self.cluster_method!r}"
+            )
+        if self.dbscan_eps <= 0:
+            raise ValueError(f"dbscan_eps must be > 0, got {self.dbscan_eps}")
+        if self.dbscan_min_samples < 1:
+            raise ValueError(
+                f"dbscan_min_samples must be >= 1, got {self.dbscan_min_samples}"
+            )
+        if self.max_workers < 1:
+            raise ValueError(f"max_workers must be >= 1, got {self.max_workers}")
+
 
 
 def load_config_from_file(path: Path) -> dict[str, Any]:

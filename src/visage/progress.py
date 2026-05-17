@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import sys
-from typing import Optional
 
 try:
     from rich.console import Console
-    from rich.progress import BarColumn, Progress, SpinnerColumn, TaskID, TextColumn, TimeRemainingColumn
+    from rich.progress import (
+        BarColumn,
+        Progress,
+        SpinnerColumn,
+        TaskID,
+        TextColumn,
+        TimeRemainingColumn,
+    )
 
     _RICH_AVAILABLE = True
 except ImportError:
@@ -21,9 +27,9 @@ class ProgressDisplay:
 
     def __init__(self, quiet: bool = False):
         self.quiet = quiet
-        self._rich_progress: Optional[Progress] = None
-        self._rich_task: Optional[TaskID] = None
-        self._console: Optional[Console] = None
+        self._rich_progress: Progress | None = None
+        self._rich_task: TaskID | None = None
+        self._console: Console | None = None
 
         if _RICH_AVAILABLE and not quiet:
             self._console = Console(stderr=True)

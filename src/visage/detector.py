@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable, Optional
 
 from .models import DetectedFace, FaceBox, ImageResult
 
@@ -156,7 +156,7 @@ def detect_faces_batch(
     min_confidence: float = 0.5,
     min_face_size: int = 40,
     max_workers: int = 4,
-    progress_callback: Optional[Callable[[int, int], None]] = None,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> list[ImageResult]:
     """Detect faces across multiple images with parallel processing.
 

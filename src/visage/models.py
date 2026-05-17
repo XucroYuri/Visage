@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 
@@ -41,8 +40,8 @@ class DetectedFace:
 
     face_box: FaceBox
     confidence: float
-    embedding: Optional[np.ndarray] = None
-    quality: Optional[float] = None
+    embedding: np.ndarray | None = None
+    quality: float | None = None
     image_path: str = ""
     face_index: int = 0
 
@@ -53,7 +52,7 @@ class ImageResult:
 
     path: str
     faces: list[DetectedFace] = field(default_factory=list)
-    error: Optional[str] = None
+    error: str | None = None
     skipped: bool = False
 
 
@@ -65,7 +64,7 @@ class ClusterResult:
     embeddings: np.ndarray  # (N, D) embedding matrix
     num_clusters: int
     num_noise: int
-    probabilities: Optional[np.ndarray] = None  # HDBSCAN membership probabilities
+    probabilities: np.ndarray | None = None  # HDBSCAN membership probabilities
 
 
 @dataclass
@@ -86,7 +85,8 @@ class PipelineResult:
     total_faces: int
     num_clusters: int
     num_noise_faces: int
-    organize_plan: Optional[OrganizePlan] = None
+    organize_plan: OrganizePlan | None = None
     cluster_confidences: dict[int, float] = field(default_factory=dict)
     duration_seconds: float = 0.0
+    phase_durations: dict[str, float] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)

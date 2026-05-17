@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 import numpy as np
 
@@ -20,7 +20,7 @@ class EmbeddingBackend(Protocol):
     name: str
     embedding_dim: int
 
-    def generate(self, image: np.ndarray, face_box: FaceBox) -> Optional[np.ndarray]: ...
+    def generate(self, image: np.ndarray, face_box: FaceBox) -> np.ndarray | None: ...
     def is_available(self) -> bool: ...
 
 
@@ -45,7 +45,7 @@ class DlibBackend:
     def is_available(self) -> bool:
         return self._available
 
-    def generate(self, image: np.ndarray, face_box: FaceBox) -> Optional[np.ndarray]:
+    def generate(self, image: np.ndarray, face_box: FaceBox) -> np.ndarray | None:
         if not self._available:
             raise RuntimeError("face_recognition library not available")
 
@@ -98,7 +98,7 @@ class InsightFaceBackend:
     def is_available(self) -> bool:
         return self._available
 
-    def generate(self, image: np.ndarray, face_box: FaceBox) -> Optional[np.ndarray]:
+    def generate(self, image: np.ndarray, face_box: FaceBox) -> np.ndarray | None:
         if not self._available:
             raise RuntimeError("insightface library not available")
 
@@ -123,14 +123,17 @@ class InsightFaceBackend:
                     return faces[0].embedding
 
             except Exception:
-                logger.warning("InsightFace embedding failed for face at %s", face_box, exc_info=True)
+                logger.warning(
+                    "InsightFace embedding failed for face at %s",
+                    face_box, exc_info=True,
+                )
 
         return None
 
     @staticmethod
     def _find_best_match(
         insightface_faces: list, face_box: FaceBox
-    ) -> Optional[object]:
+    ) -> object | None:
         """Find the InsightFace face with highest IoU overlap with face_box."""
         best_iou = 0.0
         best_face = None

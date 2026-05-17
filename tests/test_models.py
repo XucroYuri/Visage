@@ -14,7 +14,6 @@ from visage.models import (
     PipelineResult,
 )
 
-
 # ── FaceBox ───────────────────────────────────────────────────────
 
 
@@ -204,3 +203,19 @@ class TestPipelineResult:
         assert result.cluster_confidences[1] == 0.88
         assert result.duration_seconds == 12.5
         assert len(result.errors) == 1
+
+    def test_phase_durations_default(self):
+        result = PipelineResult(
+            total_images=0, images_with_faces=0,
+            total_faces=0, num_clusters=0, num_noise_faces=0,
+        )
+        assert result.phase_durations == {}
+
+    def test_phase_durations_set(self):
+        result = PipelineResult(
+            total_images=10, images_with_faces=5,
+            total_faces=7, num_clusters=2, num_noise_faces=1,
+            phase_durations={"scan": 0.1, "detection": 2.3, "embedding": 5.0},
+        )
+        assert result.phase_durations["scan"] == 0.1
+        assert len(result.phase_durations) == 3

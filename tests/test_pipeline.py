@@ -5,7 +5,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
 
 from visage.config import VisageConfig
 from visage.models import (
@@ -17,7 +16,11 @@ from visage.models import (
 from visage.pipeline import _print_dry_run_plan, run_pipeline
 
 
-def _mock_image_result(path: str = "/tmp/test.jpg", faces: int = 1, error: str | None = None) -> ImageResult:
+def _mock_image_result(
+    path: str = "/tmp/test.jpg",
+    faces: int = 1,
+    error: str | None = None,
+) -> ImageResult:
     from visage.models import DetectedFace, FaceBox
 
     face_list = []
@@ -70,7 +73,10 @@ class TestRunPipelineSuccess:
         mock_cache_cls.return_value = mock_cache
 
         mock_scan.return_value = ["/tmp/a.jpg", "/tmp/b.jpg"]
-        mock_detect.return_value = [_mock_image_result("/tmp/a.jpg"), _mock_image_result("/tmp/b.jpg")]
+        mock_detect.return_value = [
+            _mock_image_result("/tmp/a.jpg"),
+            _mock_image_result("/tmp/b.jpg"),
+        ]
 
         def embed_side_effect(results, **kwargs):
             return results, 0
@@ -84,7 +90,11 @@ class TestRunPipelineSuccess:
         mock_mapping.return_value = {0: ["/tmp/a.jpg"], 1: ["/tmp/b.jpg"]}
         mock_conf.return_value = {0: 0.95, 1: 0.88}
 
-        plan = OrganizePlan(person_folders={0: ["/tmp/a.jpg"], 1: ["/tmp/b.jpg"]}, unclustered=[], no_faces=[])
+        plan = OrganizePlan(
+            person_folders={0: ["/tmp/a.jpg"], 1: ["/tmp/b.jpg"]},
+            unclustered=[],
+            no_faces=[],
+        )
         mock_build_plan.return_value = plan
         mock_execute.return_value = {"copy": 2, "skipped": 0, "errors": 0}
 
@@ -176,7 +186,6 @@ class TestRunPipelineModes:
         self, mock_cache_cls, mock_scan, mock_detect, mock_embed,
         mock_extract, mock_cluster, mock_mapping, mock_conf, mock_build_plan,
     ):
-        from unittest.mock import ANY
 
         mock_cache = MagicMock()
         mock_cache.load_checkpoint.return_value = None

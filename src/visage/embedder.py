@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import numpy as np
 
-from .backends import EmbeddingBackend, get_backend
+from .backends import EmbeddingBackend
 from .cache import EmbeddingCache
 from .heic import load_image_as_numpy
-from .models import DetectedFace, FaceBox, ImageResult
+from .models import FaceBox, ImageResult
 from .quality import compute_face_quality
 
 logger = logging.getLogger(__name__)
@@ -35,8 +35,8 @@ def generate_embedding(
     face_box: FaceBox,
     model: str = "small",
     num_jitters: int = 1,
-    backend: Optional[EmbeddingBackend] = None,
-) -> Optional[np.ndarray]:
+    backend: EmbeddingBackend | None = None,
+) -> np.ndarray | None:
     """Generate a face embedding for a single detected face.
 
     Args:
@@ -78,7 +78,7 @@ def generate_embeddings_for_image(
     image_result: ImageResult,
     model: str = "small",
     num_jitters: int = 1,
-    backend: Optional[EmbeddingBackend] = None,
+    backend: EmbeddingBackend | None = None,
     min_face_quality: float = 0.0,
 ) -> ImageResult:
     """Generate embeddings for all detected faces in a single image.
@@ -133,9 +133,9 @@ def generate_embeddings_batch(
     image_results: list[ImageResult],
     model: str = "small",
     num_jitters: int = 1,
-    progress_callback: Optional[Callable[[int, int], None]] = None,
-    cache: Optional[EmbeddingCache] = None,
-    backend: Optional[EmbeddingBackend] = None,
+    progress_callback: Callable[[int, int], None] | None = None,
+    cache: EmbeddingCache | None = None,
+    backend: EmbeddingBackend | None = None,
     min_face_quality: float = 0.0,
 ) -> tuple[list[ImageResult], int]:
     """Generate embeddings for all detected faces across multiple images.
@@ -172,7 +172,7 @@ def generate_embeddings_batch(
     # Determine cache key model name
     cache_model = backend.name if backend else model
 
-    for idx, result in to_process:
+    for _idx, result in to_process:
         # Try cache first
         if cache is not None:
             cached = cache.lookup(result.path, model=cache_model, num_jitters=num_jitters)

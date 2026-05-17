@@ -5,14 +5,13 @@ from __future__ import annotations
 import pytest
 
 from visage.config import (
+    _TOML_KEY_MAP,
     SUPPORTED_EXTENSIONS,
     VisageConfig,
-    _TOML_KEY_MAP,
     _apply_toml_section,
     build_config,
     load_config_from_file,
 )
-
 
 # ── VisageConfig defaults ─────────────────────────────────────────
 
@@ -259,3 +258,70 @@ class TestSupportedExtensions:
 
     def test_count(self):
         assert len(SUPPORTED_EXTENSIONS) == 7
+
+
+# ── VisageConfig validation ────────────────────────────────────────
+
+
+class TestVisageConfigValidation:
+    def test_defaults_pass_validation(self):
+        VisageConfig()  # should not raise
+
+    def test_invalid_confidence_low(self):
+        with pytest.raises(ValueError, match="detection_confidence"):
+            VisageConfig(detection_confidence=-0.1)
+
+    def test_invalid_confidence_high(self):
+        with pytest.raises(ValueError, match="detection_confidence"):
+            VisageConfig(detection_confidence=1.5)
+
+    def test_invalid_min_face_size(self):
+        with pytest.raises(ValueError, match="min_face_size"):
+            VisageConfig(min_face_size=0)
+
+    def test_invalid_backend(self):
+        with pytest.raises(ValueError, match="embedding_backend"):
+            VisageConfig(embedding_backend="invalid")
+
+    def test_invalid_model(self):
+        with pytest.raises(ValueError, match="embedding_model"):
+            VisageConfig(embedding_model="huge")
+
+    def test_invalid_num_jitters(self):
+        with pytest.raises(ValueError, match="num_jitters"):
+            VisageConfig(num_jitters=0)
+
+    def test_invalid_min_quality_low(self):
+        with pytest.raises(ValueError, match="min_face_quality"):
+            VisageConfig(min_face_quality=-0.1)
+
+    def test_invalid_min_quality_high(self):
+        with pytest.raises(ValueError, match="min_face_quality"):
+            VisageConfig(min_face_quality=1.5)
+
+    def test_invalid_cluster_method(self):
+        with pytest.raises(ValueError, match="cluster_method"):
+            VisageConfig(cluster_method="kmeans")
+
+    def test_invalid_eps(self):
+        with pytest.raises(ValueError, match="dbscan_eps"):
+            VisageConfig(dbscan_eps=0.0)
+
+    def test_invalid_eps_negative(self):
+        with pytest.raises(ValueError, match="dbscan_eps"):
+            VisageConfig(dbscan_eps=-0.5)
+
+    def test_invalid_min_samples(self):
+        with pytest.raises(ValueError, match="dbscan_min_samples"):
+            VisageConfig(dbscan_min_samples=0)
+
+    def test_invalid_max_workers(self):
+        with pytest.raises(ValueError, match="max_workers"):
+            VisageConfig(max_workers=0)
+
+    def test_valid_edge_values(self):
+        VisageConfig(detection_confidence=0.0)
+        VisageConfig(detection_confidence=1.0)
+        VisageConfig(min_face_quality=0.0)
+        VisageConfig(min_face_quality=1.0)
+        VisageConfig(dbscan_eps=0.001)

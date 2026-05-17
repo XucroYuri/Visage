@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from visage.models import FaceBox
 from visage.quality import _laplacian_variance, _to_grayscale, compute_face_quality
-
 
 # ── compute_face_quality ─────────────────────────────────────────
 

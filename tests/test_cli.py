@@ -10,7 +10,6 @@ import pytest
 from visage.cli import _build_parser, main
 from visage.models import OrganizePlan, PipelineResult
 
-
 # ── _build_parser ─────────────────────────────────────────────────
 
 

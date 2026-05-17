@@ -9,7 +9,6 @@ import pytest
 
 from visage.models import FaceBox
 
-
 # ── DlibBackend ──────────────────────────────────────────────────
 
 

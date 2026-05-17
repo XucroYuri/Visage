@@ -119,7 +119,7 @@ def _load_heic_via_sips(path: str) -> Image.Image:
 
             img = Image.open(output_path)
             return img.convert("RGB") if img.mode != "RGB" else img.copy()
-        except FileNotFoundError:
-            raise ValueError("sips command not found (macOS only)")
-        except subprocess.TimeoutExpired:
-            raise ValueError(f"sips conversion timed out for {path}")
+        except FileNotFoundError as exc:
+            raise ValueError("sips command not found (macOS only)") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise ValueError(f"sips conversion timed out for {path}") from exc
