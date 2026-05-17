@@ -26,8 +26,11 @@ class TestVisageConfigDefaults:
         config = VisageConfig()
         assert config.detection_confidence == 0.5
         assert config.min_face_size == 40
+        assert config.embedding_backend == "dlib"
         assert config.embedding_model == "small"
         assert config.num_jitters == 1
+        assert config.min_face_quality == 0.0
+        assert config.cluster_method == "dbscan"
         assert config.dbscan_eps == 0.5
         assert config.dbscan_min_samples == 2
         assert config.auto_eps is False
@@ -157,6 +160,33 @@ confidence = 0.8
     def test_missing_config_file_uses_defaults(self, tmp_path):
         config = build_config(config_file=str(tmp_path / "nonexistent.toml"))
         assert config.dbscan_eps == 0.5
+
+    def test_new_fields_from_toml(self, tmp_path):
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text("""
+[embedding]
+backend = "insightface"
+
+[quality]
+min_face_quality = 0.3
+
+[clustering]
+method = "hdbscan"
+""")
+        config = build_config(config_file=str(toml_file))
+        assert config.embedding_backend == "insightface"
+        assert config.min_face_quality == 0.3
+        assert config.cluster_method == "hdbscan"
+
+    def test_cli_overrides_new_fields(self):
+        config = build_config(overrides={
+            "embedding_backend": "insightface",
+            "min_face_quality": 0.5,
+            "cluster_method": "hdbscan",
+        })
+        assert config.embedding_backend == "insightface"
+        assert config.min_face_quality == 0.5
+        assert config.cluster_method == "hdbscan"
 
 
 # ── _apply_toml_section ───────────────────────────────────────────

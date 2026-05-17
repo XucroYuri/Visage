@@ -49,27 +49,42 @@ def _build_parser() -> argparse.ArgumentParser:
     # Embedding options
     embed_group = parser.add_argument_group("embedding")
     embed_group.add_argument(
+        "--backend", choices=["dlib", "insightface"], default=None,
+        help="Embedding backend (default: dlib)",
+    )
+    embed_group.add_argument(
         "--model", choices=["small", "large"], default=None,
-        help="Face embedding model size (default: small)",
+        help="Face embedding model size (default: small, dlib only)",
     )
     embed_group.add_argument(
         "--num-jitters", type=int, default=None,
-        help="Re-sample count for embeddings (default: 1)",
+        help="Re-sample count for embeddings (default: 1, dlib only)",
+    )
+
+    # Quality options
+    quality_group = parser.add_argument_group("quality")
+    quality_group.add_argument(
+        "--min-quality", type=float, default=None,
+        help="Minimum face quality score 0-1 (default: 0, no filtering)",
     )
 
     # Clustering options
     cluster_group = parser.add_argument_group("clustering")
     cluster_group.add_argument(
+        "--cluster-method", choices=["dbscan", "hdbscan"], default=None,
+        help="Clustering algorithm (default: dbscan)",
+    )
+    cluster_group.add_argument(
         "--eps", type=float, default=None,
-        help="DBSCAN epsilon threshold (default: 0.5)",
+        help="DBSCAN epsilon threshold (default: 0.5, DBSCAN only)",
     )
     cluster_group.add_argument(
         "--min-samples", type=int, default=None,
-        help="DBSCAN minimum samples per cluster (default: 2)",
+        help="Minimum samples per cluster (default: 2)",
     )
     cluster_group.add_argument(
         "--auto-eps", action="store_true", default=False,
-        help="Automatically estimate eps using k-distance elbow method",
+        help="Automatically estimate eps using k-distance elbow method (DBSCAN only)",
     )
 
     # Include options
@@ -124,8 +139,11 @@ def main(argv: list[str] | None = None) -> int:
     overrides = {
         "copy_mode": not args.move,
         "detection_confidence": args.min_confidence,
+        "embedding_backend": args.backend,
         "embedding_model": args.model,
         "num_jitters": args.num_jitters,
+        "min_face_quality": args.min_quality,
+        "cluster_method": args.cluster_method,
         "dbscan_eps": args.eps,
         "dbscan_min_samples": args.min_samples,
         "auto_eps": args.auto_eps,

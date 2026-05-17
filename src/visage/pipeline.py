@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from typing import Optional
 
+from .backends import get_backend
 from .cache import EmbeddingCache
 from .cluster import build_cluster_mapping, cluster_faces, compute_cluster_confidences, extract_embeddings
 from .config import DEFAULT_OUTPUT_DIRNAME, VisageConfig
@@ -103,12 +104,21 @@ def run_pipeline(
     def embedding_progress(completed: int, total: int) -> None:
         prog.update("3/5 Embedding", completed, total)
 
+    # Create embedding backend
+    backend = get_backend(
+        cfg.embedding_backend,
+        model=cfg.embedding_model,
+        num_jitters=cfg.num_jitters,
+    )
+
     image_results, cache_hits = generate_embeddings_batch(
         image_results,
         model=cfg.embedding_model,
         num_jitters=cfg.num_jitters,
         progress_callback=embedding_progress,
         cache=cache,
+        backend=backend,
+        min_face_quality=cfg.min_face_quality,
     )
 
     faces_with_embeddings = sum(
@@ -136,6 +146,7 @@ def run_pipeline(
         eps=cfg.dbscan_eps,
         min_samples=cfg.dbscan_min_samples,
         auto_eps=cfg.auto_eps,
+        cluster_method=cfg.cluster_method,
     )
 
     cluster_mapping = build_cluster_mapping(cluster_result, face_to_image)

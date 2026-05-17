@@ -164,6 +164,39 @@ class TestClusterFaces:
         np.testing.assert_allclose(norms, 1.0, atol=1e-10)
 
 
+# ── cluster_faces with HDBSCAN ─────────────────────────────────────
+
+
+class TestClusterFacesHDBSCAN:
+    def test_hdbscan_two_clusters(self, clusterable_embeddings):
+        embeddings, _ = clusterable_embeddings
+        result = cluster_faces(embeddings, min_samples=2, cluster_method="hdbscan")
+        assert result.num_clusters >= 1
+        assert len(result.labels) == 20
+
+    def test_hdbscan_empty_input(self):
+        result = cluster_faces(np.empty((0, 128)), cluster_method="hdbscan")
+        assert result.num_clusters == 0
+        assert result.num_noise == 0
+        assert len(result.labels) == 0
+
+    def test_hdbscan_has_probabilities(self, clusterable_embeddings):
+        embeddings, _ = clusterable_embeddings
+        result = cluster_faces(embeddings, min_samples=2, cluster_method="hdbscan")
+        if result.num_clusters > 0:
+            assert result.probabilities is not None
+            assert len(result.probabilities) == len(embeddings)
+            # Non-noise points should have probability > 0
+            non_noise = result.labels != -1
+            if non_noise.any():
+                assert all(result.probabilities[non_noise] > 0)
+
+    def test_hdbscan_default_method_is_dbscan(self, clusterable_embeddings):
+        embeddings, _ = clusterable_embeddings
+        result = cluster_faces(embeddings, eps=1.0, min_samples=2)
+        assert result.probabilities is None  # DBSCAN has no probabilities
+
+
 # ── build_cluster_mapping ─────────────────────────────────────────
 
 

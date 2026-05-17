@@ -49,6 +49,31 @@ class TestBuildParser:
         args = parser.parse_args(["/path", "--auto-eps"])
         assert args.auto_eps is True
 
+    def test_backend_option(self):
+        parser = _build_parser()
+        args = parser.parse_args(["/path", "--backend", "insightface"])
+        assert args.backend == "insightface"
+
+    def test_backend_default_is_none(self):
+        parser = _build_parser()
+        args = parser.parse_args(["/path"])
+        assert args.backend is None
+
+    def test_cluster_method_option(self):
+        parser = _build_parser()
+        args = parser.parse_args(["/path", "--cluster-method", "hdbscan"])
+        assert args.cluster_method == "hdbscan"
+
+    def test_cluster_method_invalid_exits(self):
+        parser = _build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["/path", "--cluster-method", "kmeans"])
+
+    def test_min_quality_option(self):
+        parser = _build_parser()
+        args = parser.parse_args(["/path", "--min-quality", "0.3"])
+        assert args.min_quality == 0.3
+
     def test_model_choices(self):
         parser = _build_parser()
         args = parser.parse_args(["/path", "--model", "large"])

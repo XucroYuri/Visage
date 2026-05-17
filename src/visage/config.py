@@ -19,14 +19,19 @@ class VisageConfig:
     detection_confidence: float = 0.5
     min_face_size: int = 40  # minimum face bounding box dimension in pixels
 
-    # Face embedding (face_recognition library)
-    embedding_model: str = "small"  # "small" (fast) or "large" (accurate)
-    num_jitters: int = 1  # times to re-sample for embedding
+    # Face embedding
+    embedding_backend: str = "dlib"  # "dlib" or "insightface"
+    embedding_model: str = "small"  # "small" (fast) or "large" (accurate) — dlib only
+    num_jitters: int = 1  # times to re-sample for embedding — dlib only
 
-    # Clustering (DBSCAN)
-    dbscan_eps: float = 0.5  # max distance between embeddings in same cluster
+    # Face quality filtering
+    min_face_quality: float = 0.0  # minimum quality score [0, 1]; 0 = no filtering
+
+    # Clustering
+    cluster_method: str = "dbscan"  # "dbscan" or "hdbscan"
+    dbscan_eps: float = 0.5  # max distance between embeddings in same cluster — DBSCAN only
     dbscan_min_samples: int = 2  # min faces to form a cluster
-    auto_eps: bool = False  # automatically estimate eps using k-distance elbow
+    auto_eps: bool = False  # automatically estimate eps using k-distance elbow — DBSCAN only
 
     # Processing
     batch_size: int = 100  # images per batch for progress reporting
@@ -64,10 +69,15 @@ _TOML_KEY_MAP = {
         "min_face_size": "min_face_size",
     },
     "embedding": {
+        "backend": "embedding_backend",
         "model": "embedding_model",
         "num_jitters": "num_jitters",
     },
+    "quality": {
+        "min_face_quality": "min_face_quality",
+    },
     "clustering": {
+        "method": "cluster_method",
         "eps": "dbscan_eps",
         "min_samples": "dbscan_min_samples",
     },

@@ -5,9 +5,11 @@ from typing import Callable, Optional
 
 import numpy as np
 
+from .backends import EmbeddingBackend, get_backend
 from .cache import EmbeddingCache
 from .heic import load_image_as_numpy
 from .models import DetectedFace, FaceBox, ImageResult
+from .quality import compute_face_quality
 
 logger = logging.getLogger(__name__)
 
@@ -33,18 +35,25 @@ def generate_embedding(
     face_box: FaceBox,
     model: str = "small",
     num_jitters: int = 1,
+    backend: Optional[EmbeddingBackend] = None,
 ) -> Optional[np.ndarray]:
-    """Generate a 128-dim face embedding for a single detected face.
+    """Generate a face embedding for a single detected face.
 
     Args:
         image: RGB numpy array of the full image, shape (H, W, 3).
         face_box: Bounding box of the face.
-        model: "small" (fast) or "large" (accurate).
-        num_jitters: Number of re-samples for the embedding.
+        model: "small" (fast) or "large" (accurate) — dlib only.
+        num_jitters: Number of re-samples for the embedding — dlib only.
+        backend: Optional EmbeddingBackend instance. If provided, model/num_jitters
+                 are ignored in favor of backend's own settings.
 
     Returns:
-        128-dimensional numpy array, or None if embedding fails.
+        Embedding vector, or None if embedding fails.
     """
+    if backend is not None:
+        return backend.generate(image, face_box)
+
+    # Legacy path: use face_recognition directly
     _check_face_recognition()
 
     # face_recognition expects face locations as (top, right, bottom, left)
@@ -69,15 +78,20 @@ def generate_embeddings_for_image(
     image_result: ImageResult,
     model: str = "small",
     num_jitters: int = 1,
+    backend: Optional[EmbeddingBackend] = None,
+    min_face_quality: float = 0.0,
 ) -> ImageResult:
     """Generate embeddings for all detected faces in a single image.
 
-    Updates face embeddings in-place. Faces that fail to encode get None.
+    Updates face embeddings in-place. Faces that fail to encode or fall below
+    the quality threshold get filtered out.
 
     Args:
         image_result: ImageResult with detected faces (no embeddings yet).
-        model: Embedding model size.
-        num_jitters: Re-sample count.
+        model: Embedding model size — dlib only.
+        num_jitters: Re-sample count — dlib only.
+        backend: Optional EmbeddingBackend instance.
+        min_face_quality: Minimum quality score [0, 1]; 0 = no filtering.
 
     Returns:
         The same ImageResult with embeddings populated.
@@ -93,11 +107,23 @@ def generate_embeddings_for_image(
         return image_result
 
     for face in image_result.faces:
+        # Compute quality score
+        face.quality = compute_face_quality(image_array, face.face_box)
+
+        # Skip faces below quality threshold
+        if min_face_quality > 0 and face.quality < min_face_quality:
+            logger.debug(
+                "Face in %s below quality threshold (%.3f < %.3f)",
+                image_result.path, face.quality, min_face_quality,
+            )
+            continue
+
         face.embedding = generate_embedding(
-            image_array, face.face_box, model=model, num_jitters=num_jitters
+            image_array, face.face_box, model=model, num_jitters=num_jitters,
+            backend=backend,
         )
 
-    # Filter out faces without embeddings
+    # Filter out faces without embeddings (low quality or failed encoding)
     image_result.faces = [f for f in image_result.faces if f.embedding is not None]
 
     return image_result
@@ -109,6 +135,8 @@ def generate_embeddings_batch(
     num_jitters: int = 1,
     progress_callback: Optional[Callable[[int, int], None]] = None,
     cache: Optional[EmbeddingCache] = None,
+    backend: Optional[EmbeddingBackend] = None,
+    min_face_quality: float = 0.0,
 ) -> tuple[list[ImageResult], int]:
     """Generate embeddings for all detected faces across multiple images.
 
@@ -118,15 +146,19 @@ def generate_embeddings_batch(
 
     Args:
         image_results: List of ImageResult from detection phase.
-        model: Embedding model size.
-        num_jitters: Re-sample count.
+        model: Embedding model size — dlib only.
+        num_jitters: Re-sample count — dlib only.
         progress_callback: Called with (completed, total) after each image.
         cache: Optional EmbeddingCache for storing/retrieving results.
+        backend: Optional EmbeddingBackend instance.
+        min_face_quality: Minimum quality score [0, 1]; 0 = no filtering.
 
     Returns:
         Tuple of (updated ImageResult list, number of cache hits).
     """
-    _check_face_recognition()
+    # Only check face_recognition if using the legacy path (no backend)
+    if backend is None:
+        _check_face_recognition()
 
     # Only process images that have faces and no errors
     to_process = [
@@ -137,10 +169,13 @@ def generate_embeddings_batch(
     completed = 0
     cache_hits = 0
 
+    # Determine cache key model name
+    cache_model = backend.name if backend else model
+
     for idx, result in to_process:
         # Try cache first
         if cache is not None:
-            cached = cache.lookup(result.path, model=model, num_jitters=num_jitters)
+            cached = cache.lookup(result.path, model=cache_model, num_jitters=num_jitters)
             if cached is not None:
                 result.faces = cached
                 cache_hits += 1
@@ -150,11 +185,14 @@ def generate_embeddings_batch(
                 continue
 
         # Compute embeddings
-        generate_embeddings_for_image(result, model=model, num_jitters=num_jitters)
+        generate_embeddings_for_image(
+            result, model=model, num_jitters=num_jitters,
+            backend=backend, min_face_quality=min_face_quality,
+        )
 
         # Store in cache
         if cache is not None and result.faces:
-            cache.store(result.path, result.faces, model=model, num_jitters=num_jitters)
+            cache.store(result.path, result.faces, model=cache_model, num_jitters=num_jitters)
 
         completed += 1
         if progress_callback:

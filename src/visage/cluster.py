@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 from sklearn.cluster import DBSCAN
 from sklearn.neighbors import NearestNeighbors
 
 from .models import ClusterResult, ImageResult
+
+logger = logging.getLogger(__name__)
+
+# HDBSCAN is available in scikit-learn >= 1.3
+try:
+    from sklearn.cluster import HDBSCAN
+    _HDBSCAN_AVAILABLE = True
+except ImportError:
+    _HDBSCAN_AVAILABLE = False
 
 
 def _normalize_embeddings(embeddings: np.ndarray) -> np.ndarray:
@@ -26,7 +37,7 @@ def extract_embeddings(image_results: list[ImageResult]) -> tuple[np.ndarray, li
 
     Returns:
         Tuple of:
-        - (N, 128) numpy array of embeddings
+        - (N, D) numpy array of embeddings
         - List of (image_path, face_index) tuples, one per row
     """
     embeddings: list[np.ndarray] = []
@@ -103,15 +114,17 @@ def cluster_faces(
     min_samples: int = 2,
     auto_eps: bool = False,
     eps_k: int = 5,
+    cluster_method: str = "dbscan",
 ) -> ClusterResult:
-    """Cluster face embeddings using DBSCAN.
+    """Cluster face embeddings using DBSCAN or HDBSCAN.
 
     Args:
-        embeddings: (N, 128) array of face embeddings.
-        eps: Maximum distance between embeddings in the same cluster.
+        embeddings: (N, D) array of face embeddings.
+        eps: Maximum distance between embeddings in the same cluster (DBSCAN only).
         min_samples: Minimum number of faces to form a cluster.
-        auto_eps: If True, estimate eps automatically.
+        auto_eps: If True, estimate eps automatically (DBSCAN only).
         eps_k: k value for eps estimation when auto_eps is True.
+        cluster_method: "dbscan" or "hdbscan".
 
     Returns:
         ClusterResult with labels and statistics.
@@ -127,6 +140,10 @@ def cluster_faces(
     # L2-normalize embeddings
     normalized = _normalize_embeddings(embeddings)
 
+    if cluster_method == "hdbscan":
+        return _cluster_hdbscan(normalized, min_samples)
+
+    # Default: DBSCAN
     # Auto-estimate eps if requested
     if auto_eps and len(normalized) > eps_k + 1:
         eps = estimate_eps(normalized, k=eps_k)
@@ -145,6 +162,42 @@ def cluster_faces(
         embeddings=normalized,
         num_clusters=num_clusters,
         num_noise=num_noise,
+    )
+
+
+def _cluster_hdbscan(
+    normalized: np.ndarray,
+    min_samples: int = 2,
+) -> ClusterResult:
+    """Cluster using HDBSCAN.
+
+    HDBSCAN automatically adapts to varying cluster densities and
+    does not require an eps parameter.
+    """
+    if not _HDBSCAN_AVAILABLE:
+        raise RuntimeError(
+            "HDBSCAN not available. Requires scikit-learn >= 1.3. "
+            "Install it: pip install scikit-learn>=1.3"
+        )
+
+    clusterer = HDBSCAN(min_samples=min_samples, metric="euclidean")
+    labels = clusterer.fit_predict(normalized)
+
+    unique_labels = set(labels)
+    unique_labels.discard(-1)
+    num_clusters = len(unique_labels)
+    num_noise = int(np.sum(labels == -1))
+
+    probabilities = None
+    if hasattr(clusterer, "probabilities_"):
+        probabilities = clusterer.probabilities_
+
+    return ClusterResult(
+        labels=labels,
+        embeddings=normalized,
+        num_clusters=num_clusters,
+        num_noise=num_noise,
+        probabilities=probabilities,
     )
 
 

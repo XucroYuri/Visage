@@ -41,7 +41,8 @@ class DetectedFace:
 
     face_box: FaceBox
     confidence: float
-    embedding: Optional[np.ndarray] = None  # 128-dim vector, filled in Phase 3
+    embedding: Optional[np.ndarray] = None
+    quality: Optional[float] = None
     image_path: str = ""
     face_index: int = 0
 
@@ -61,9 +62,10 @@ class ClusterResult:
     """Result of clustering all faces."""
 
     labels: np.ndarray  # cluster labels, -1 = noise/outlier
-    embeddings: np.ndarray  # (N, 128) embedding matrix
+    embeddings: np.ndarray  # (N, D) embedding matrix
     num_clusters: int
     num_noise: int
+    probabilities: Optional[np.ndarray] = None  # HDBSCAN membership probabilities
 
 
 @dataclass

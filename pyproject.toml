@@ -40,6 +40,10 @@ dependencies = [
 dev = [
     "pytest>=7.0",
 ]
+insightface = [
+    "insightface>=0.7",
+    "onnxruntime>=1.16",
+]
 
 [project.scripts]
 visage = "visage.cli:main"
