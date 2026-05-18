@@ -370,6 +370,8 @@ def compute_composite_distance(
 def merge_clusters(
     cluster_result: ClusterResult,
     merge_threshold: float = 0.85,
+    min_reliable_size: int = 10,
+    small_merge_threshold: float = 0.75,
 ) -> ClusterResult:
     """Merge clusters whose centroids are above a cosine similarity threshold.
 
@@ -378,9 +380,17 @@ def merge_clusters(
     threshold. This avoids the transitive chain-merging problem (where A~B
     and B~C causes all three to merge even if A and C are dissimilar).
 
+    Uses size-aware thresholding: when either cluster is below
+    min_reliable_size, uses small_merge_threshold (more permissive) instead
+    of merge_threshold. Small clusters have unreliable centroids (2-4 faces
+    produce unstable means), so they need a lower bar to merge into larger
+    clusters without collapsing large clusters together.
+
     Args:
         cluster_result: ClusterResult from cluster_faces().
-        merge_threshold: Minimum cosine similarity between centroids to merge.
+        merge_threshold: Cosine similarity threshold for reliable clusters.
+        min_reliable_size: Clusters below this size use the relaxed threshold.
+        small_merge_threshold: Relaxed threshold when one cluster is small.
 
     Returns:
         New ClusterResult with merged labels and updated statistics.
@@ -411,19 +421,32 @@ def merge_clusters(
     active = set(label_list)
     merges_performed = 0
 
+    def _threshold_for(size_a: int, size_b: int) -> float:
+        """Use relaxed threshold when either cluster is too small for a
+        reliable centroid."""
+        if size_a < min_reliable_size or size_b < min_reliable_size:
+            return small_merge_threshold
+        return merge_threshold
+
     # Iterative greedy merging: find best pair, merge, recompute centroid
     while len(active) > 1:
         best_sim = -1.0
         best_pair: tuple[int, int] | None = None
         sorted_active = sorted(active)
         for i, label_a in enumerate(sorted_active):
+            size_a = cluster_embeddings[label_a].shape[0]
             for label_b in sorted_active[i + 1:]:
                 sim = float(centroids[label_a] @ centroids[label_b])
-                if sim > best_sim:
-                    best_sim = sim
-                    best_pair = (label_a, label_b)
+                if sim <= best_sim:
+                    continue
+                size_b = cluster_embeddings[label_b].shape[0]
+                needed = _threshold_for(size_a, size_b)
+                if sim < needed:
+                    continue
+                best_sim = sim
+                best_pair = (label_a, label_b)
 
-        if best_pair is None or best_sim < merge_threshold:
+        if best_pair is None:
             break
 
         a, b = best_pair
@@ -440,8 +463,9 @@ def merge_clusters(
         merges_performed += 1
 
         logger.debug(
-            "Merging cluster %d into %d (similarity: %.3f)",
-            b, a, best_sim,
+            "Merging cluster %d into %d (similarity: %.3f, sizes: %d+%d)",
+            b, a, best_sim, merged_embs.shape[0] - cluster_embeddings[a].shape[0],
+            cluster_embeddings[a].shape[0],
         )
 
     # Renumber remaining labels to be sequential starting from 0

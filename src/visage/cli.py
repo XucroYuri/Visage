@@ -106,6 +106,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--merge-threshold", type=float, default=None,
         help="Cosine similarity threshold for merging clusters 0-1 (default: 0.85)",
     )
+    cluster_group.add_argument(
+        "--small-merge-threshold", type=float, default=None,
+        help="Relaxed merge threshold for small clusters 0-1 (default: 0.75)",
+    )
+    cluster_group.add_argument(
+        "--min-reliable-size", type=int, default=None,
+        help="Clusters below this size use relaxed threshold (default: 10)",
+    )
 
     # Include options
     include_group = parser.add_argument_group("include")
@@ -172,6 +180,8 @@ def main(argv: list[str] | None = None) -> int:
         "cluster_selection_method": args.cluster_selection_method,
         "head_feature_weight": args.head_feature_weight,
         "merge_threshold": args.merge_threshold,
+        "small_merge_threshold": args.small_merge_threshold,
+        "min_reliable_size": args.min_reliable_size,
         "max_workers": args.max_workers,
         "include_unclustered": args.include_unclustered,
         "include_no_faces": args.include_no_faces,

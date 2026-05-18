@@ -251,6 +251,8 @@ def run_pipeline(
     if cfg.merge_threshold > 0.0:
         cluster_result = merge_clusters(
             cluster_result, merge_threshold=cfg.merge_threshold,
+            min_reliable_size=cfg.min_reliable_size,
+            small_merge_threshold=cfg.small_merge_threshold,
         )
 
     cluster_mapping = build_cluster_mapping(cluster_result, face_to_image)

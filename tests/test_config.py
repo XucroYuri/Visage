@@ -36,7 +36,9 @@ class TestVisageConfigDefaults:
         assert config.cluster_selection_epsilon == 0.0
         assert config.cluster_selection_method == "eom"
         assert config.head_feature_weight == 0.2
-        assert config.merge_threshold == 0.85
+        assert config.merge_threshold == 0.75
+        assert config.small_merge_threshold == 0.70
+        assert config.min_reliable_size == 10
         assert config.auto_eps is False
         assert config.copy_mode is True
         assert config.folder_prefix == "person_"

@@ -37,8 +37,10 @@ class VisageConfig:
     # >0 can trigger sklearn Cython bug with certain datasets
     cluster_selection_epsilon: float = 0.0
     cluster_selection_method: str = "eom"  # "eom" (stable) or "leaf" (fine-grained)
-    # higher = less merging (0.85 ≈ 32° centroid angle)
-    merge_threshold: float = 0.85
+    # higher = less merging (0.75 ≈ 41° centroid angle)
+    merge_threshold: float = 0.75
+    small_merge_threshold: float = 0.70  # relaxed threshold when one cluster is small
+    min_reliable_size: int = 10  # clusters below this size use relaxed threshold
 
     # Head features (supplementary signal for clustering)
     head_feature_weight: float = 0.2  # weight for head features in composite distance (0–1)
@@ -109,6 +111,16 @@ class VisageConfig:
                 f"merge_threshold must be 0-1, "
                 f"got {self.merge_threshold}"
             )
+        if not 0.0 <= self.small_merge_threshold <= 1.0:
+            raise ValueError(
+                f"small_merge_threshold must be 0-1, "
+                f"got {self.small_merge_threshold}"
+            )
+        if self.min_reliable_size < 2:
+            raise ValueError(
+                f"min_reliable_size must be >= 2, "
+                f"got {self.min_reliable_size}"
+            )
         if not 0.0 <= self.head_feature_weight <= 1.0:
             raise ValueError(
                 f"head_feature_weight must be 0-1, "
@@ -158,6 +170,8 @@ _TOML_KEY_MAP = {
         "cluster_selection_method": "cluster_selection_method",
         "head_feature_weight": "head_feature_weight",
         "merge_threshold": "merge_threshold",
+        "small_merge_threshold": "small_merge_threshold",
+        "min_reliable_size": "min_reliable_size",
     },
     "output": {
         "copy_mode": "copy_mode",
