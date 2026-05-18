@@ -1,6 +1,6 @@
 # Visage
 
-macOS-native face clustering and photo sorting CLI. Scan a folder of photos, detect faces, group them by person, and organize into per-person subfolders.
+macOS-native face clustering and photo sorting CLI. Scan a folder of photos, detect faces, group them by person, and organize into per-person subfolders. Includes an interactive web UI for manual review and correction.
 
 ## Features
 
@@ -9,6 +9,7 @@ macOS-native face clustering and photo sorting CLI. Scan a folder of photos, det
 - DBSCAN and HDBSCAN clustering with automatic eps estimation (`--auto-eps`)
 - Face quality assessment -- Laplacian blur detection + size ratio filtering
 - Per-cluster confidence scores (cosine similarity to centroid)
+- **Interactive web UI** -- visual review, merge/split/rename clusters, face overlay
 - SQLite embedding cache -- incremental processing on re-runs
 - Checkpoint/resume for interrupted runs
 - Rich terminal progress bars with plain-text fallback
@@ -71,10 +72,10 @@ brew install cmake
 ```bash
 git clone https://github.com/user/Visage.git
 cd Visage
-pip install -e ".[dev]"
+uv sync --extra dev --extra insightface --extra web
 ```
 
-This installs the `visage` command-line tool and all dependencies, including pyobjc frameworks for Vision access and face_recognition for embeddings.
+This installs the `visage` command-line tool with all optional dependencies. Use `pip install -e ".[dev,insightface,web]"` if you prefer pip.
 
 ## Quick Start
 
@@ -109,6 +110,32 @@ Let Visage estimate the best clustering threshold automatically:
 ```bash
 visage ~/Photos/Vacation --auto-eps
 ```
+
+## Web UI (Review Mode)
+
+Launch an interactive web interface to visually review and correct clustering results:
+
+```bash
+visage ~/Photos/Vacation --serve --backend insightface
+```
+
+This opens a browser at `http://localhost:8787` with:
+
+- **Cluster sidebar** -- browse all detected person clusters with thumbnails and confidence scores
+- **Face overlay** -- green bounding boxes show which face was detected in each photo
+- **Merge** -- combine clusters that belong to the same person (merge mode or drag)
+- **Move** -- reassign individual photos between clusters via dropdown menu
+- **Remove** -- remove misidentified photos from a cluster (becomes unclustered)
+- **Rename** -- click any cluster name to assign a person name
+- **Undo** -- all operations are reversible with undo stack
+- **Unclustered panel** -- review noise faces and assign them to clusters
+- **Save to Disk** -- write the final organized folder structure
+
+Pipeline progress is streamed live via Server-Sent Events with a 5-phase progress bar.
+
+Web UI dependencies (`fastapi`, `uvicorn`) are installed with the `[web]` extra.
+
+## CLI Reference
 
 ## CLI Reference
 
@@ -176,6 +203,14 @@ visage INPUT [OPTIONS]
 | `-v`, `--verbose` | off | Show detailed log output (warnings and debug info) |
 | `--config` | none | Path to TOML config file |
 | `--version` | | Print version and exit |
+
+### Serve (Web UI)
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--serve` | off | Start web review UI instead of batch processing |
+| `--port` | `8787` | Port for the review web server |
+| `--no-open` | off | Don't auto-open browser |
 
 ## Configuration
 
