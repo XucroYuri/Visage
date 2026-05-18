@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import logging
 from collections.abc import Callable
 
@@ -198,6 +199,9 @@ def generate_embeddings_batch(
         # Store in cache
         if cache is not None and result.faces:
             cache.store(result.path, result.faces, model=cache_model, num_jitters=num_jitters)
+
+        # Free image memory after each encoding (InsightFace can be heavy)
+        gc.collect()
 
         completed += 1
         if progress_callback:

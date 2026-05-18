@@ -143,28 +143,26 @@ class TestInsightFaceBackend:
         result = backend.generate(np.zeros((100, 100, 3), dtype=np.uint8), face_box)
         assert result is None
 
-    def test_find_best_match_returns_best_iou(self):
+    def test_crop_face_returns_cropped_region(self):
         from visage.backends import InsightFaceBackend
-        face_box = FaceBox(top=10, right=110, bottom=110, left=10)
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        face_box = FaceBox(top=30, right=70, bottom=70, left=30)
 
-        face_good = MagicMock()
-        face_good.bbox = np.array([5, 5, 115, 115])  # high overlap
+        crop = InsightFaceBackend._crop_face(image, face_box)
+        # 80% padding → face is 40x40, pad = 32 on each side
+        h, w = crop.shape[:2]
+        assert h > 40  # should have padding
+        assert w > 40
 
-        face_bad = MagicMock()
-        face_bad.bbox = np.array([200, 200, 300, 300])  # no overlap
-
-        result = InsightFaceBackend._find_best_match([face_good, face_bad], face_box)
-        assert result is face_good
-
-    def test_find_best_match_returns_none_low_iou(self):
+    def test_crop_face_clamps_to_image_bounds(self):
         from visage.backends import InsightFaceBackend
-        face_box = FaceBox(top=10, right=110, bottom=110, left=10)
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        face_box = FaceBox(top=0, right=110, bottom=110, left=0)
 
-        face_far = MagicMock()
-        face_far.bbox = np.array([500, 500, 600, 600])
-
-        result = InsightFaceBackend._find_best_match([face_far], face_box)
-        assert result is None
+        crop = InsightFaceBackend._crop_face(image, face_box)
+        h, w = crop.shape[:2]
+        assert h <= 100
+        assert w <= 100
 
 
 # ── get_backend factory ──────────────────────────────────────────

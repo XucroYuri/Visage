@@ -68,12 +68,16 @@ class DlibBackend:
 
 
 class InsightFaceBackend:
-    """Embedding backend using InsightFace (ArcFace)."""
+    """Embedding backend using InsightFace (ArcFace).
+
+    Optimised for memory: only loads detection + recognition modules,
+    and runs on face crops (not full images) to minimise temporary memory.
+    """
 
     name = "insightface"
     embedding_dim = 512
 
-    def __init__(self, det_size: tuple[int, int] = (640, 640)) -> None:
+    def __init__(self, det_size: tuple[int, int] = (320, 320)) -> None:
         self._det_size = det_size
         self._lock = threading.Lock()
         self._app = None
@@ -86,13 +90,19 @@ class InsightFaceBackend:
             self._available = False
 
     def _init_app(self) -> None:
-        """Lazy-initialize the InsightFace model (expensive)."""
+        """Lazy-initialize InsightFace with only detection + recognition modules.
+
+        Skips gender/age and 3D landmark models to reduce memory footprint.
+        """
         if self._app is not None:
             return
 
         import insightface
 
-        self._app = insightface.app.FaceAnalysis(name="buffalo_l")
+        self._app = insightface.app.FaceAnalysis(
+            name="buffalo_l",
+            allowed_modules=["detection", "recognition"],
+        )
         self._app.prepare(ctx_id=0, det_size=self._det_size)
 
     def is_available(self) -> bool:
@@ -105,23 +115,17 @@ class InsightFaceBackend:
         with self._lock:
             self._init_app()
 
-            # InsightFace expects BGR input
-            bgr_image = image[:, :, ::-1] if image.shape[-1] == 3 else image
+            # Crop face region with padding for detection context.
+            # Running on a crop drastically reduces InsightFace temporary memory
+            # compared to running detection on the full high-resolution image.
+            crop = self._crop_face(image, face_box)
+            bgr_crop = crop[:, :, ::-1] if crop.shape[-1] == 3 else crop
 
             try:
-                faces = self._app.get(bgr_image)
-                if not faces:
-                    return None
-
-                # Find the InsightFace-detected face that best overlaps with face_box
-                best_face = self._find_best_match(faces, face_box)
-                if best_face is not None:
-                    return best_face.embedding
-
-                # Fallback: use the first face's embedding if only one detected
-                if len(faces) == 1:
+                faces = self._app.get(bgr_crop)
+                if faces:
+                    # The crop contains one face — return the best detection
                     return faces[0].embedding
-
             except Exception:
                 logger.warning(
                     "InsightFace embedding failed for face at %s",
@@ -131,35 +135,20 @@ class InsightFaceBackend:
         return None
 
     @staticmethod
-    def _find_best_match(
-        insightface_faces: list, face_box: FaceBox
-    ) -> object | None:
-        """Find the InsightFace face with highest IoU overlap with face_box."""
-        best_iou = 0.0
-        best_face = None
+    def _crop_face(image: np.ndarray, face_box: FaceBox) -> np.ndarray:
+        """Crop face region with 80% padding for landmark detection context."""
+        h, w = image.shape[:2]
+        fw = face_box.width
+        fh = face_box.height
+        pad_x = int(fw * 0.8)
+        pad_y = int(fh * 0.8)
 
-        for face in insightface_faces:
-            bbox = face.bbox.astype(int)
-            # InsightFace bbox format: [x1, y1, x2, y2]
-            ix1, iy1, ix2, iy2 = bbox[0], bbox[1], bbox[2], bbox[3]
+        x1 = max(0, face_box.left - pad_x)
+        y1 = max(0, face_box.top - pad_y)
+        x2 = min(w, face_box.right + pad_x)
+        y2 = min(h, face_box.bottom + pad_y)
 
-            # Compute IoU
-            x1 = max(face_box.left, ix1)
-            y1 = max(face_box.top, iy1)
-            x2 = min(face_box.right, ix2)
-            y2 = min(face_box.bottom, iy2)
-
-            intersection = max(0, x2 - x1) * max(0, y2 - y1)
-            area_a = face_box.area
-            area_b = (ix2 - ix1) * (iy2 - iy1)
-            union = area_a + area_b - intersection
-
-            iou = intersection / union if union > 0 else 0.0
-            if iou > best_iou:
-                best_iou = iou
-                best_face = face
-
-        return best_face if best_iou > 0.1 else None
+        return image[y1:y2, x1:x2]
 
 
 def get_backend(name: str, **kwargs) -> EmbeddingBackend:
@@ -182,7 +171,7 @@ def get_backend(name: str, **kwargs) -> EmbeddingBackend:
         )
     elif name == "insightface":
         return InsightFaceBackend(
-            det_size=kwargs.get("det_size", (640, 640)),
+            det_size=kwargs.get("det_size", (320, 320)),
         )
     else:
         raise ValueError(f"Unknown embedding backend: {name!r}. Choose 'dlib' or 'insightface'.")
