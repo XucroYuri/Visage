@@ -19,7 +19,7 @@ from visage.organizer import build_organize_plan, execute_organize_plan
 @dataclass
 class _Operation:
     """A reversible mutation on the workspace."""
-    kind: str  # "merge", "remove", "rename"
+    kind: str  # "merge", "remove", "rename", "move"
     data: dict  # parameters to reverse the operation
 
 
@@ -88,7 +88,7 @@ class Workspace:
 
     @property
     def num_noise_faces(self) -> int:
-        return self._cluster_result.num_noise
+        return len(self.noise_photos)
 
     def cluster_photos(self, cluster_id: int) -> list[str]:
         return list(self._cluster_mapping.get(cluster_id, []))
@@ -151,11 +151,20 @@ class Workspace:
         if image_path not in photos:
             raise ValueError(f"Image {image_path} not in cluster {from_cluster_id}")
 
+        cluster_deleted = len(photos) == 1
+        saved_name = self._cluster_names.pop(from_cluster_id, None) if cluster_deleted else None
+        saved_confidence = (
+            self._cluster_confidences.pop(from_cluster_id, None) if cluster_deleted else None
+        )
+
         self._history.append(_Operation(
             kind="remove",
             data={
                 "image_path": image_path,
                 "from_cluster_id": from_cluster_id,
+                "cluster_deleted": cluster_deleted,
+                "saved_name": saved_name,
+                "saved_confidence": saved_confidence,
             },
         ))
 
@@ -164,8 +173,6 @@ class Workspace:
         # Remove cluster if empty
         if not photos:
             del self._cluster_mapping[from_cluster_id]
-            self._cluster_names.pop(from_cluster_id, None)
-            self._cluster_confidences.pop(from_cluster_id, None)
 
     def move_face(self, image_path: str, from_cluster_id: int, to_cluster_id: int) -> None:
         """Move a face/image from one cluster to another.
@@ -307,10 +314,12 @@ class Workspace:
                 self._cluster_mapping[from_cluster_id] = []
             self._cluster_mapping[from_cluster_id].append(image_path)
 
-            # Restore name if it was removed
-            if from_cluster_id not in self._cluster_confidences:
-                # This happens if cluster was deleted by the remove
-                pass
+            # Restore cluster metadata if it was deleted
+            if op.data.get("cluster_deleted"):
+                if op.data["saved_name"] is not None:
+                    self._cluster_names[from_cluster_id] = op.data["saved_name"]
+                if op.data["saved_confidence"] is not None:
+                    self._cluster_confidences[from_cluster_id] = op.data["saved_confidence"]
 
             result["image_path"] = image_path
             result["cluster_id"] = from_cluster_id

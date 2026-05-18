@@ -32,15 +32,6 @@ from .workspace import Workspace
 
 logger = logging.getLogger(__name__)
 
-# Pipeline phases reported via SSE
-PIPELINE_PHASES = [
-    (1, "Scanning images"),
-    (2, "Detecting faces"),
-    (3, "Generating embeddings"),
-    (4, "Clustering faces"),
-    (5, "Merging clusters"),
-]
-
 
 def _run_pipeline(
     input_dir: str,
@@ -217,6 +208,26 @@ def create_app(input_dir: str, config: VisageConfig | None = None) -> FastAPI:
         """Stream pipeline progress via Server-Sent Events."""
         def event_stream() -> Generator[str, None, None]:
             q: queue.Queue = request.app.state.progress_queue
+            # Flush any already-queued events (pipeline may have finished
+            # before this SSE client connected)
+            while True:
+                try:
+                    data = q.get_nowait()
+                    yield f"data: {json.dumps(data)}\n\n"
+                    if data.get("done") or data.get("error"):
+                        return
+                except queue.Empty:
+                    break
+
+            # If workspace already loaded, send done immediately
+            if request.app.state.workspace is not None:
+                done_msg = json.dumps(
+                    {"phase": 5, "message": "Pipeline complete", "done": True}
+                )
+                yield f"data: {done_msg}\n\n"
+                return
+
+            # Wait for live events
             while True:
                 try:
                     data = q.get(timeout=30)
@@ -226,21 +237,6 @@ def create_app(input_dir: str, config: VisageConfig | None = None) -> FastAPI:
                 except queue.Empty:
                     # Keep-alive
                     yield ": keepalive\n\n"
-                    # Check if pipeline already finished
-                    if request.app.state.workspace is not None:
-                        done_msg = json.dumps(
-                            {"phase": 5, "message": "Pipeline complete", "done": True}
-                        )
-                        yield f"data: {done_msg}\n\n"
-                        break
-                    if request.app.state.pipeline_error is not None:
-                        err_msg = json.dumps({
-                            "phase": -1,
-                            "message": request.app.state.pipeline_error,
-                            "error": True,
-                        })
-                        yield f"data: {err_msg}\n\n"
-                        break
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")
 

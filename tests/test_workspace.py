@@ -353,12 +353,19 @@ class TestUndo:
         ws = _make_workspace(num_clusters=1, photos_per_cluster=1)
         photos = ws.cluster_photos(0)
 
+        # Rename the cluster first so it has a name to restore
+        ws.rename_cluster(0, "TestPerson")
+        ws._history.clear()  # clear rename history so we only test remove undo
+
         ws.remove_face(photos[0], 0)
         assert 0 not in ws._cluster_mapping
 
         ws.undo()
         assert 0 in ws._cluster_mapping
         assert photos[0] in ws.cluster_photos(0)
+        # Name and confidence should be restored
+        assert ws.cluster_name(0) == "TestPerson"
+        assert ws.cluster_confidence(0) > 0.0
 
     def test_multiple_undo_lifo(self):
         ws = _make_workspace(num_clusters=3, photos_per_cluster=2)
