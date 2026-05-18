@@ -147,6 +147,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to TOML config file",
     )
 
+    # Serve mode (web UI)
+    serve_group = parser.add_argument_group("serve")
+    serve_group.add_argument(
+        "--serve", action="store_true", default=False,
+        help="Start web review UI instead of batch processing",
+    )
+    serve_group.add_argument(
+        "--port", type=int, default=8787,
+        help="Port for the review web server (default: 8787)",
+    )
+    serve_group.add_argument(
+        "--no-open", action="store_true", default=False,
+        help="Don't auto-open browser on serve",
+    )
+
     return parser
 
 
@@ -196,6 +211,22 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
+
+    # ── Serve mode: start web review UI ──────────────────────────
+    if args.serve:
+        try:
+            from .server.app import serve
+        except ImportError as exc:
+            print(
+                f"Error: Web UI dependencies not installed. "
+                f"Run: pip install fastapi uvicorn\n"
+                f"Details: {exc}",
+                file=sys.stderr,
+            )
+            return 1
+        serve(args.input, config=config, port=args.port,
+              open_browser=not args.no_open)
+        return 0
 
     progress = ProgressDisplay(quiet=args.quiet)
 

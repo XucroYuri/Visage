@@ -35,3 +35,11 @@ visage_output/
 
 # OMC plugin state
 .omc/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# uv lock (platform-specific)
+uv.lock
