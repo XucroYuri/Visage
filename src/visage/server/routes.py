@@ -131,6 +131,31 @@ async def remove_face(cluster_id: int, request: Request):
     return {"ok": True, "workspace": ws.to_api_dict()}
 
 
+@router.post("/clusters/{cluster_id}/remove-batch")
+async def remove_faces_batch(cluster_id: int, request: Request):
+    """Remove multiple faces from a cluster at once.
+
+    Body: {image_paths: [str, ...]}
+    All removed photos go to noise. Pushes a single undo operation.
+    """
+    ws = _get_workspace(request)
+    body = await request.json()
+    image_paths = body.get("image_paths")
+    if not image_paths:
+        raise HTTPException(status_code=400, detail="Missing image_paths")
+    if not isinstance(image_paths, list):
+        raise HTTPException(
+            status_code=400, detail="image_paths must be a list"
+        )
+
+    try:
+        ws.batch_remove_faces(cluster_id, image_paths)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"ok": True, "workspace": ws.to_api_dict()}
+
+
 @router.post("/clusters/move")
 async def move_face(request: Request):
     """Move a face from one cluster to another. Body: {image_path, from_id, to_id}."""
@@ -165,6 +190,35 @@ async def assign_noise(request: Request):
     try:
         # Use a virtual "noise" source cluster ID (-1)
         ws.move_face(image_path, -1, to_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"ok": True, "workspace": ws.to_api_dict()}
+
+
+@router.post("/clusters/assign-batch")
+async def assign_noise_batch(request: Request):
+    """Assign multiple noise/unclustered photos to a cluster at once.
+
+    Body: {image_paths: [str, ...], to_id: int}
+    Pushes a single undo operation for all assignments.
+    """
+    ws = _get_workspace(request)
+    body = await request.json()
+    image_paths = body.get("image_paths")
+    to_id = body.get("to_id")
+
+    if not image_paths or to_id is None:
+        raise HTTPException(
+            status_code=400, detail="Missing image_paths or to_id"
+        )
+    if not isinstance(image_paths, list):
+        raise HTTPException(
+            status_code=400, detail="image_paths must be a list"
+        )
+
+    try:
+        ws.batch_assign_noise(image_paths, to_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

@@ -7,7 +7,7 @@ body {
   color: #1a1a2e;
 }
 
-/* Masonry grid layout (react-masonry-css) */
+/* ── Masonry grid layout (react-masonry-css) ─────────────── */
 .masonry-grid {
   display: flex;
   margin-left: -12px; /* gap offset */
@@ -21,4 +21,58 @@ body {
 
 .masonry-grid-column > .group {
   margin-bottom: 0;
+}
+
+/* ── Animations ──────────────────────────────────────────── */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+/* ── Drag and drop ───────────────────────────────────────── */
+.drag-ghost {
+  opacity: 0.6;
+  transform: scale(0.95);
+}
+
+.drop-target-glow {
+  box-shadow: 0 0 0 2px #3b82f6, 0 0 8px rgba(59, 130, 246, 0.3);
 }

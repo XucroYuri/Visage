@@ -49,6 +49,33 @@ export interface PipelineEvent {
   elapsed?: number;
 }
 
+export interface MutationResult {
+  ok: boolean;
+  workspace: WorkspaceState;
+}
+
+export interface UndoResult {
+  ok: boolean;
+  undo: Record<string, unknown>;
+  workspace: WorkspaceState;
+}
+
+export interface SaveResult {
+  ok: boolean;
+  stats: Record<string, number>;
+}
+
+/** API error with optional HTTP status code. */
+export class ApiError extends Error {
+  statusCode?: number;
+
+  constructor(message: string, statusCode?: number) {
+    super(message);
+    this.name = "ApiError";
+    this.statusCode = statusCode;
+  }
+}
+
 const BASE = "/api";
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -58,23 +85,29 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(body || res.statusText);
+    throw new ApiError(body || res.statusText, res.status);
   }
-  return res.json();
+  return res.json() as Promise<T>;
 }
 
 export function fetchWorkspace(): Promise<WorkspaceState> {
   return request<WorkspaceState>("/workspace");
 }
 
-export function mergeClusters(fromId: number, toId: number): Promise<{ ok: boolean; workspace: WorkspaceState }> {
+export function mergeClusters(
+  fromId: number,
+  toId: number,
+): Promise<MutationResult> {
   return request("/clusters/merge", {
     method: "POST",
     body: JSON.stringify({ from_id: fromId, to_id: toId }),
   });
 }
 
-export function removeFace(clusterId: number, imagePath: string): Promise<{ ok: boolean; workspace: WorkspaceState }> {
+export function removeFace(
+  clusterId: number,
+  imagePath: string,
+): Promise<MutationResult> {
   return request(`/clusters/${clusterId}/remove`, {
     method: "POST",
     body: JSON.stringify({ image_path: imagePath }),
@@ -85,7 +118,7 @@ export function moveFace(
   imagePath: string,
   fromId: number,
   toId: number,
-): Promise<{ ok: boolean; workspace: WorkspaceState }> {
+): Promise<MutationResult> {
   return request("/clusters/move", {
     method: "POST",
     body: JSON.stringify({ image_path: imagePath, from_id: fromId, to_id: toId }),
@@ -95,32 +128,38 @@ export function moveFace(
 export function assignNoise(
   imagePath: string,
   toId: number,
-): Promise<{ ok: boolean; workspace: WorkspaceState }> {
+): Promise<MutationResult> {
   return request("/clusters/assign", {
     method: "POST",
     body: JSON.stringify({ image_path: imagePath, to_id: toId }),
   });
 }
 
-export function renameCluster(clusterId: number, name: string): Promise<{ ok: boolean; workspace: WorkspaceState }> {
+export function renameCluster(
+  clusterId: number,
+  name: string,
+): Promise<MutationResult> {
   return request(`/clusters/${clusterId}`, {
     method: "PUT",
     body: JSON.stringify({ name }),
   });
 }
 
-export function undo(): Promise<{ ok: boolean; undo: object; workspace: WorkspaceState }> {
+export function undo(): Promise<UndoResult> {
   return request("/clusters/undo", { method: "POST" });
 }
 
-export function save(outputDir?: string): Promise<{ ok: boolean; stats: Record<string, number> }> {
+export function save(outputDir?: string): Promise<SaveResult> {
   return request("/save", {
     method: "POST",
     body: JSON.stringify({ output_dir: outputDir }),
   });
 }
 
-export function getImageUrl(path: string, size: "thumb" | "full" = "thumb"): string {
+export function getImageUrl(
+  path: string,
+  size: "thumb" | "full" = "thumb",
+): string {
   const encoded = encodeURIComponent(path);
   return `${BASE}/image?path=${encoded}&size=${size}`;
 }

@@ -19,7 +19,7 @@ from visage.organizer import build_organize_plan, execute_organize_plan
 @dataclass
 class _Operation:
     """A reversible mutation on the workspace."""
-    kind: str  # "merge", "remove", "rename", "move"
+    kind: str  # "merge", "remove", "rename", "move", "batch_assign", "batch_remove"
     data: dict  # parameters to reverse the operation
 
 
@@ -233,6 +233,77 @@ class Workspace:
 
         self._cluster_mapping[to_cluster_id].append(image_path)
 
+    def batch_assign_noise(self, image_paths: list[str], to_id: int) -> None:
+        """Assign multiple noise photos to a cluster at once.
+
+        If to_id does not exist, a new cluster is created.
+        Pushes a single undo operation that can revert all assignments.
+        """
+        if not image_paths:
+            return
+
+        # Validate all paths are noise photos
+        for path in image_paths:
+            if path not in self.noise_photos:
+                raise ValueError(f"Image {path} is not in noise set")
+
+        # Create destination cluster if it doesn't exist
+        is_new_cluster = to_id not in self._cluster_mapping
+        if is_new_cluster:
+            self._cluster_mapping[to_id] = []
+            self._cluster_confidences[to_id] = 0.0
+
+        self._history.append(_Operation(
+            kind="batch_assign",
+            data={
+                "image_paths": list(image_paths),
+                "to_id": to_id,
+                "was_new_cluster": is_new_cluster,
+            },
+        ))
+
+        self._cluster_mapping[to_id].extend(image_paths)
+
+    def batch_remove_faces(self, cluster_id: int, image_paths: list[str]) -> None:
+        """Remove multiple faces from a cluster at once.
+
+        All removed photos go to noise. Pushes a single undo operation
+        that can restore all removed photos in one step.
+        """
+        if not image_paths:
+            return
+
+        if cluster_id not in self._cluster_mapping:
+            raise ValueError(f"Cluster not found: {cluster_id}")
+
+        photos = self._cluster_mapping[cluster_id]
+        for path in image_paths:
+            if path not in photos:
+                raise ValueError(f"Image {path} not in cluster {cluster_id}")
+
+        cluster_deleted = len(photos) == len(image_paths)
+        saved_name = self._cluster_names.pop(cluster_id, None) if cluster_deleted else None
+        saved_confidence = (
+            self._cluster_confidences.pop(cluster_id, None) if cluster_deleted else None
+        )
+
+        self._history.append(_Operation(
+            kind="batch_remove",
+            data={
+                "image_paths": list(image_paths),
+                "from_cluster_id": cluster_id,
+                "cluster_deleted": cluster_deleted,
+                "saved_name": saved_name,
+                "saved_confidence": saved_confidence,
+            },
+        ))
+
+        for path in image_paths:
+            photos.remove(path)
+
+        if not photos:
+            del self._cluster_mapping[cluster_id]
+
     @property
     def noise_photos(self) -> list[str]:
         """Return image paths for faces that weren't assigned to any cluster."""
@@ -377,6 +448,46 @@ class Workspace:
             result["image_path"] = image_path
             result["from_cluster_id"] = from_id
             result["to_cluster_id"] = to_id
+
+        elif op.kind == "batch_assign":
+            image_paths = op.data["image_paths"]
+            to_id = op.data["to_id"]
+
+            # Remove all assigned paths from destination cluster
+            dest_photos = self._cluster_mapping[to_id]
+            for path in image_paths:
+                dest_photos.remove(path)
+
+            # Remove destination cluster if it was newly created and now empty
+            if op.data["was_new_cluster"] and not dest_photos:
+                del self._cluster_mapping[to_id]
+                self._cluster_names.pop(to_id, None)
+                self._cluster_confidences.pop(to_id, None)
+            # Photos go back to noise — no action needed (noise is computed dynamically)
+
+            result["image_paths"] = image_paths
+            result["to_cluster_id"] = to_id
+
+        elif op.kind == "batch_remove":
+            image_paths = op.data["image_paths"]
+            from_cluster_id = op.data["from_cluster_id"]
+
+            # Restore the cluster if it was deleted
+            if from_cluster_id not in self._cluster_mapping:
+                self._cluster_mapping[from_cluster_id] = []
+
+            # Restore all removed paths
+            self._cluster_mapping[from_cluster_id].extend(image_paths)
+
+            # Restore cluster metadata if it was deleted
+            if op.data.get("cluster_deleted"):
+                if op.data["saved_name"] is not None:
+                    self._cluster_names[from_cluster_id] = op.data["saved_name"]
+                if op.data["saved_confidence"] is not None:
+                    self._cluster_confidences[from_cluster_id] = op.data["saved_confidence"]
+
+            result["image_paths"] = image_paths
+            result["cluster_id"] = from_cluster_id
 
         return result
 
