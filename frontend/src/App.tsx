@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Masonry from "react-masonry-css";
 import type { ClusterInfo, PhotoInfo, PipelineEvent, WorkspaceState } from "./api";
 import {
   assignNoise,
@@ -14,6 +15,9 @@ import {
 } from "./api";
 
 type ViewMode = "all" | "noise" | { clusterId: number };
+
+/** Number of photos to render per batch (infinite scroll). */
+const PAGE_SIZE = 80;
 
 /* ── Pipeline loading screen ────────────────────────────── */
 
@@ -39,7 +43,6 @@ function PipelineLoader({ onReady, onError }: {
       setMessage(data.message);
       if (data.done) {
         es.close();
-        // Small delay to let workspace state settle
         setTimeout(() => {
           fetchWorkspace().then(onReady).catch((err) => onError(String(err)));
         }, 200);
@@ -51,7 +54,6 @@ function PipelineLoader({ onReady, onError }: {
     };
     es.onerror = () => {
       es.close();
-      // Fallback: try to fetch workspace directly
       fetchWorkspace()
         .then(onReady)
         .catch(() => onError("Connection lost"));
@@ -115,11 +117,9 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Try fetching workspace first — if pipeline is already done, skip SSE
     fetchWorkspace()
       .then(handleWorkspaceReady)
       .catch(() => {
-        // Workspace not ready yet — pipeline still loading, show loader
         setLoading(true);
       });
   }, [handleWorkspaceReady]);
@@ -226,7 +226,6 @@ function App() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [ws?.can_undo, saving]);
 
-  // Pipeline still loading
   if (loading && !ws) {
     return <PipelineLoader onReady={handleWorkspaceReady} onError={handleError} />;
   }
@@ -371,24 +370,87 @@ function App() {
               onAssign={(path, toId) => handleMove(path, -1, toId)}
             />
           ) : (
-            <div>
-              <h2 className="text-lg font-semibold text-gray-700 mb-4">
-                All Photos ({ws.all_photos.length})
-              </h2>
-              <div className="grid grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                {ws.all_photos.map((photo) => (
-                  <PhotoCard key={photo.path} photo={photo} />
-                ))}
-              </div>
-              {ws.all_photos.length === 0 && (
-                <div className="text-center text-gray-400 mt-20">
-                  <p className="text-lg">No clustered photos</p>
-                </div>
-              )}
-            </div>
+            <PhotoMasonry
+              title="All Photos"
+              photos={ws.all_photos}
+            />
           )}
         </main>
       </div>
+    </div>
+  );
+}
+
+/* ── Masonry photo grid with infinite scroll ──────────────── */
+
+function PhotoMasonry({ title, photos }: {
+  title: string;
+  photos: PhotoInfo[];
+}) {
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Reset visible count when photos change
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [photos]);
+
+  // Infinite scroll via IntersectionObserver
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, photos.length));
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [photos.length]);
+
+  const visiblePhotos = useMemo(
+    () => photos.slice(0, visibleCount),
+    [photos, visibleCount],
+  );
+
+  const breakpointColumns = {
+    default: 6,
+    1600: 5,
+    1200: 4,
+    900: 3,
+    600: 2,
+  };
+
+  return (
+    <div>
+      <h2 className="text-lg font-semibold text-gray-700 mb-4">
+        {title} ({photos.length})
+      </h2>
+      {photos.length === 0 ? (
+        <div className="text-center text-gray-400 mt-20">
+          <p className="text-lg">No photos</p>
+        </div>
+      ) : (
+        <>
+          <Masonry
+            breakpointCols={breakpointColumns}
+            className="masonry-grid"
+            columnClassName="masonry-grid-column"
+          >
+            {visiblePhotos.map((photo) => (
+              <PhotoCard key={photo.path} photo={photo} />
+            ))}
+          </Masonry>
+          {/* Sentinel for infinite scroll */}
+          {visibleCount < photos.length && (
+            <div ref={sentinelRef} className="py-8 text-center text-gray-400 text-sm">
+              Loading more... ({visibleCount} / {photos.length})
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -476,8 +538,66 @@ function ClusterDetail({ cluster, clusters, onRemove, onMove, onBack, onStartRen
         </span>
       </div>
 
-      <div className="grid grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-        {cluster.photos.map((photo) => (
+      <ClusterPhotoGrid
+        cluster={cluster}
+        clusters={clusters}
+        onRemove={onRemove}
+        onMove={onMove}
+      />
+    </div>
+  );
+}
+
+/* ── Cluster photo grid with masonry + infinite scroll ───── */
+
+function ClusterPhotoGrid({ cluster, clusters, onRemove, onMove }: {
+  cluster: ClusterInfo;
+  clusters: ClusterInfo[];
+  onRemove: (path: string) => void;
+  onMove: (path: string, toId: number) => void;
+}) {
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [cluster.id]);
+
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, cluster.photos.length));
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [cluster.photos.length]);
+
+  const visiblePhotos = useMemo(
+    () => cluster.photos.slice(0, visibleCount),
+    [cluster.photos, visibleCount],
+  );
+
+  const breakpointColumns = {
+    default: 6,
+    1600: 5,
+    1200: 4,
+    900: 3,
+    600: 2,
+  };
+
+  return (
+    <>
+      <Masonry
+        breakpointCols={breakpointColumns}
+        className="masonry-grid"
+        columnClassName="masonry-grid-column"
+      >
+        {visiblePhotos.map((photo) => (
           <PhotoCard
             key={photo.path}
             photo={photo}
@@ -486,8 +606,13 @@ function ClusterDetail({ cluster, clusters, onRemove, onMove, onBack, onStartRen
             otherClusters={clusters.filter((c) => c.id !== cluster.id)}
           />
         ))}
-      </div>
-    </div>
+      </Masonry>
+      {visibleCount < cluster.photos.length && (
+        <div ref={sentinelRef} className="py-8 text-center text-gray-400 text-sm">
+          Loading more... ({visibleCount} / {cluster.photos.length})
+        </div>
+      )}
+    </>
   );
 }
 
@@ -505,20 +630,82 @@ function NoisePanel({ noisePhotos, clusters, nextClusterId, onAssign }: {
       {noisePhotos.length === 0 ? (
         <p className="text-gray-400 text-center mt-10">No unclustered faces</p>
       ) : (
-        <div className="grid grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-          {noisePhotos.map((photo) => (
-            <div key={photo.path} className="relative group">
-              <PhotoCard
-                photo={photo}
-                onMove={(toId) => onAssign(photo.path, toId)}
-                otherClusters={clusters}
-                nextClusterId={nextClusterId}
-              />
-            </div>
-          ))}
-        </div>
+        <NoisePhotoGrid
+          noisePhotos={noisePhotos}
+          clusters={clusters}
+          nextClusterId={nextClusterId}
+          onAssign={onAssign}
+        />
       )}
     </div>
+  );
+}
+
+/* ── Noise photo grid with masonry ────────────────────────── */
+
+function NoisePhotoGrid({ noisePhotos, clusters, nextClusterId, onAssign }: {
+  noisePhotos: PhotoInfo[];
+  clusters: ClusterInfo[];
+  nextClusterId: number;
+  onAssign: (path: string, toId: number) => void;
+}) {
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [noisePhotos.length]);
+
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, noisePhotos.length));
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [noisePhotos.length]);
+
+  const visiblePhotos = useMemo(
+    () => noisePhotos.slice(0, visibleCount),
+    [noisePhotos, visibleCount],
+  );
+
+  const breakpointColumns = {
+    default: 6,
+    1600: 5,
+    1200: 4,
+    900: 3,
+    600: 2,
+  };
+
+  return (
+    <>
+      <Masonry
+        breakpointCols={breakpointColumns}
+        className="masonry-grid"
+        columnClassName="masonry-grid-column"
+      >
+        {visiblePhotos.map((photo) => (
+          <PhotoCard
+            key={photo.path}
+            photo={photo}
+            onMove={(toId) => onAssign(photo.path, toId)}
+            otherClusters={clusters}
+            nextClusterId={nextClusterId}
+          />
+        ))}
+      </Masonry>
+      {visibleCount < noisePhotos.length && (
+        <div ref={sentinelRef} className="py-8 text-center text-gray-400 text-sm">
+          Loading more... ({visibleCount} / {noisePhotos.length})
+        </div>
+      )}
+    </>
   );
 }
 
@@ -538,11 +725,11 @@ function PhotoCard({ photo, onRemove, onMove, otherClusters, nextClusterId }: {
 
   return (
     <>
-      <div className="group relative bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="group relative bg-white border border-gray-200 rounded-lg overflow-hidden mb-3">
         <div className="relative">
           <img
             src={getImageUrl(photo.path)} alt={filename}
-            className="w-full aspect-square object-cover cursor-pointer"
+            className="w-full h-auto cursor-pointer block"
             onClick={() => setShowFull(true)}
             loading="lazy"
             onLoad={(e) => {
@@ -613,7 +800,7 @@ function PhotoCard({ photo, onRemove, onMove, otherClusters, nextClusterId }: {
         </div>
       </div>
 
-      {/* Full-size modal with navigation */}
+      {/* Full-size modal */}
       {showFull && (
         <PhotoViewer
           photo={photo}
@@ -626,7 +813,7 @@ function PhotoCard({ photo, onRemove, onMove, otherClusters, nextClusterId }: {
   );
 }
 
-/* ── Full-size photo viewer with prev/next ───────────────── */
+/* ── Full-size photo viewer ──────────────────────────────── */
 
 function PhotoViewer({ photo, onClose, fullSize, setFullSize }: {
   photo: PhotoInfo;

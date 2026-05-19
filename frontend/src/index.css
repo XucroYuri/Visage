@@ -6,3 +6,19 @@ body {
   background: #fafafa;
   color: #1a1a2e;
 }
+
+/* Masonry grid layout (react-masonry-css) */
+.masonry-grid {
+  display: flex;
+  margin-left: -12px; /* gap offset */
+  width: auto;
+}
+
+.masonry-grid-column {
+  padding-left: 12px;
+  background-clip: padding-box;
+}
+
+.masonry-grid-column > .group {
+  margin-bottom: 0;
+}
