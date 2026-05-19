@@ -202,12 +202,29 @@ function App() {
       const action = ws?.config.copy_mode ? "copied" : "moved";
       const count = res.stats[action] || 0;
       setSaveResult(`Saved: ${count} files ${action}`);
+      setTimeout(() => setSaveResult(null), 4000);
     } catch (e) {
       setSaveResult(`Error: ${e}`);
     } finally {
       setSaving(false);
     }
   };
+
+  // Keyboard shortcuts: Ctrl+Z = undo, Ctrl+S = save
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "z" && ws?.can_undo) {
+        e.preventDefault();
+        undo().then((res) => setWs(res.workspace));
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "s" && !saving) {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [ws?.can_undo, saving]);
 
   // Pipeline still loading
   if (loading && !ws) {
