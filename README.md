@@ -137,8 +137,6 @@ Web UI dependencies (`fastapi`, `uvicorn`) are installed with the `[web]` extra.
 
 ## CLI Reference
 
-## CLI Reference
-
 ```
 visage INPUT [OPTIONS]
 ```
@@ -182,9 +180,9 @@ visage INPUT [OPTIONS]
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--cluster-method` | `dbscan` | Clustering algorithm: `dbscan` or `hdbscan` |
+| `--cluster-method` | `hdbscan` | Clustering algorithm: `dbscan` or `hdbscan` |
 | `--eps` | `0.5` | DBSCAN epsilon (max distance between embeddings in a cluster, DBSCAN only) |
-| `--min-samples` | `2` | Minimum samples per cluster |
+| `--min-samples` | `3` | Minimum samples per cluster |
 | `--auto-eps` | off | Automatically estimate eps using k-distance elbow method (DBSCAN only) |
 
 ### Include

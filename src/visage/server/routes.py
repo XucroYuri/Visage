@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import os
+from collections import OrderedDict
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -12,8 +13,8 @@ from PIL import Image
 
 router = APIRouter(prefix="/api")
 
-# Simple in-memory thumbnail cache
-_thumbnail_cache: dict[str, bytes] = {}
+# Simple in-memory LRU thumbnail cache
+_thumbnail_cache: OrderedDict[str, bytes] = OrderedDict()
 _THUMB_CACHE_MAX = 200
 _THUMB_SIZE = (300, 300)
 
@@ -67,6 +68,7 @@ def get_image(
     if size == "thumb":
         cache_key = path
         if cache_key in _thumbnail_cache:
+            _thumbnail_cache.move_to_end(cache_key)
             return Response(
                 content=_thumbnail_cache[cache_key],
                 media_type="image/jpeg",
@@ -80,10 +82,9 @@ def get_image(
             img.save(buf, format="JPEG", quality=85)
             data = buf.getvalue()
 
-            # Simple cache eviction
+            # LRU eviction
             if len(_thumbnail_cache) >= _THUMB_CACHE_MAX:
-                oldest = next(iter(_thumbnail_cache))
-                del _thumbnail_cache[oldest]
+                _thumbnail_cache.popitem(last=False)
             _thumbnail_cache[cache_key] = data
 
             return Response(content=data, media_type="image/jpeg")

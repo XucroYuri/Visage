@@ -462,10 +462,10 @@ def merge_clusters(
         labels[labels == b] = a
         merges_performed += 1
 
+        size_b = cluster_embeddings[b].shape[0]
         logger.debug(
             "Merging cluster %d into %d (similarity: %.3f, sizes: %d+%d)",
-            b, a, best_sim, merged_embs.shape[0] - cluster_embeddings[a].shape[0],
-            cluster_embeddings[a].shape[0],
+            b, a, best_sim, merged_embs.shape[0] - size_b, size_b,
         )
 
     # Renumber remaining labels to be sequential starting from 0
