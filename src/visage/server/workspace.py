@@ -252,12 +252,17 @@ class Workspace:
         return max(self._cluster_mapping.keys()) + 1
 
     def rename_cluster(self, cluster_id: int, name: str) -> None:
-        """Assign a user-friendly name to a cluster."""
+        """Assign a user-friendly name to a cluster.
+
+        If another cluster already has this name, the current cluster is
+        automatically merged into the existing one (same-name auto-merge).
+        """
         if cluster_id not in self._cluster_mapping:
             raise ValueError(f"Cluster not found: {cluster_id}")
 
         old_name = self._cluster_names.get(cluster_id)
 
+        # Push rename undo operation
         self._history.append(_Operation(
             kind="rename",
             data={
@@ -267,6 +272,13 @@ class Workspace:
         ))
 
         self._cluster_names[cluster_id] = name
+
+        # Auto-merge: if another cluster already has this name, merge into it
+        if name:
+            for other_id, other_name in self._cluster_names.items():
+                if other_id != cluster_id and other_name == name:
+                    self.merge_clusters(cluster_id, other_id)
+                    break
 
     def undo(self) -> dict | None:
         """Undo the last operation. Returns info about what was undone, or None."""
