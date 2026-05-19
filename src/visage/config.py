@@ -21,7 +21,7 @@ class VisageConfig:
     min_face_size: int = 40  # minimum face bounding box dimension in pixels
 
     # Face embedding
-    embedding_backend: str = "dlib"  # "dlib" or "insightface"
+    embedding_backend: str = "insightface"  # "dlib" or "insightface"
     embedding_model: str = "small"  # "small" (fast) or "large" (accurate) — dlib only
     num_jitters: int = 1  # times to re-sample for embedding — dlib only
 

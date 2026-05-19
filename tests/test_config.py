@@ -25,7 +25,7 @@ class TestVisageConfigDefaults:
         config = VisageConfig()
         assert config.detection_confidence == 0.5
         assert config.min_face_size == 40
-        assert config.embedding_backend == "dlib"
+        assert config.embedding_backend == "insightface"
         assert config.embedding_model == "small"
         assert config.num_jitters == 1
         assert config.min_face_quality == 0.0
