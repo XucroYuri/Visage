@@ -146,14 +146,21 @@ class InsightFaceBackend:
         return self._dlib_generate(image, face_box)
 
     def _dlib_generate(self, image: np.ndarray, face_box: FaceBox) -> np.ndarray | None:
-        """Fallback embedding via dlib when InsightFace fails."""
+        """Fallback embedding via dlib when InsightFace fails.
+
+        Pads the 128-dim dlib vector to 512-dim with zeros so all embeddings
+        in a mixed run have the same shape for clustering.
+        """
         if self._dlib_fallback is None:
             try:
                 import face_recognition  # noqa: F401
             except ImportError:
                 return None
             self._dlib_fallback = DlibBackend(model=self._fallback_model)
-        return self._dlib_fallback.generate(image, face_box)
+        emb = self._dlib_fallback.generate(image, face_box)
+        if emb is not None:
+            emb = np.pad(emb, (0, self.embedding_dim - len(emb)))
+        return emb
 
     @staticmethod
     def _crop_face(image: np.ndarray, face_box: FaceBox) -> np.ndarray:

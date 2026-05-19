@@ -33,13 +33,13 @@ class VisageConfig:
     dbscan_eps: float = 0.5  # max distance between embeddings in same cluster — DBSCAN only
     dbscan_min_samples: int = 3  # min faces to form a cluster (also used as HDBSCAN min_samples)
     auto_eps: bool = False  # automatically estimate eps using k-distance elbow — DBSCAN only
-    hdbscan_min_cluster_size: int = 2  # minimum cluster size for HDBSCAN
+    hdbscan_min_cluster_size: int = 5  # minimum cluster size for HDBSCAN
     # >0 can trigger sklearn Cython bug with certain datasets
     cluster_selection_epsilon: float = 0.0
     cluster_selection_method: str = "eom"  # "eom" (stable) or "leaf" (fine-grained)
-    # higher = less merging (0.70 ≈ 45° centroid angle)
-    merge_threshold: float = 0.70
-    small_merge_threshold: float = 0.65  # relaxed threshold when one cluster is small
+    # cosine similarity threshold for post-clustering merge (0.85 ≈ 32° angle)
+    merge_threshold: float = 0.85
+    small_merge_threshold: float = 0.80  # relaxed threshold when one cluster is small
     min_reliable_size: int = 10  # clusters below this size use relaxed threshold
 
     # Head features (supplementary signal for clustering)
