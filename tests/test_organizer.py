@@ -245,3 +245,39 @@ class TestExecuteOrganizePlan:
         execute_organize_plan(plan, out_dir)
         assert os.path.exists(os.path.join(out_dir, "person_00", "face_a.jpg"))
         assert os.path.exists(os.path.join(out_dir, "person_01", "face_b.jpg"))
+
+    def test_cluster_names_override(self, tmp_path):
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "face.jpg").write_text("img")
+
+        plan = OrganizePlan(
+            person_folders={0: [str(src / "face.jpg")]},
+            unclustered=[], no_faces=[],
+        )
+        out_dir = str(tmp_path / "output")
+        execute_organize_plan(
+            plan, out_dir, cluster_names={0: "Alice"},
+        )
+        assert os.path.exists(os.path.join(out_dir, "Alice", "face.jpg"))
+        assert not os.path.exists(os.path.join(out_dir, "person_00"))
+
+    def test_cluster_names_partial_override(self, tmp_path):
+        src_a = tmp_path / "src_a"
+        src_a.mkdir()
+        (src_a / "face_a.jpg").write_text("a")
+        src_b = tmp_path / "src_b"
+        src_b.mkdir()
+        (src_b / "face_b.jpg").write_text("b")
+
+        plan = OrganizePlan(
+            person_folders={0: [str(src_a / "face_a.jpg")], 1: [str(src_b / "face_b.jpg")]},
+            unclustered=[], no_faces=[],
+        )
+        out_dir = str(tmp_path / "output")
+        # Only cluster 0 has a custom name; cluster 1 falls back to person_01
+        execute_organize_plan(
+            plan, out_dir, cluster_names={0: "Alice"},
+        )
+        assert os.path.exists(os.path.join(out_dir, "Alice", "face_a.jpg"))
+        assert os.path.exists(os.path.join(out_dir, "person_01", "face_b.jpg"))

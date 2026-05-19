@@ -386,6 +386,7 @@ class Workspace:
             folder_prefix=self.config.folder_prefix,
             include_unclustered=self.config.include_unclustered,
             include_no_faces=self.config.include_no_faces,
+            cluster_names=self._cluster_names or None,
         )
 
         stats = execute_organize_plan(
@@ -394,6 +395,7 @@ class Workspace:
             folder_prefix=self.config.folder_prefix,
             copy_mode=self.config.copy_mode,
             dry_run=False,
+            cluster_names=self._cluster_names or None,
         )
         return stats
 

@@ -18,6 +18,7 @@ def build_organize_plan(
     folder_prefix: str = DEFAULT_FOLDER_PREFIX,
     include_unclustered: bool = False,
     include_no_faces: bool = False,
+    cluster_names: dict[int, str] | None = None,
 ) -> OrganizePlan:
     """Build a plan for organizing files based on clustering results.
 
@@ -99,6 +100,7 @@ def execute_organize_plan(
     copy_mode: bool = True,
     dry_run: bool = False,
     progress_callback: Callable[[int, int, str], None] | None = None,
+    cluster_names: dict[int, str] | None = None,
 ) -> dict[str, int]:
     """Execute the organize plan: copy/move files into subfolders.
 
@@ -132,7 +134,8 @@ def execute_organize_plan(
 
     # Organize person folders
     for cluster_id, image_paths in plan.person_folders.items():
-        folder_name = f"{folder_prefix}{cluster_id:02d}"
+        custom_name = cluster_names.get(cluster_id) if cluster_names else None
+        folder_name = custom_name if custom_name else f"{folder_prefix}{cluster_id:02d}"
         person_dir = os.path.join(output_dir, folder_name)
         Path(person_dir).mkdir(parents=True, exist_ok=True)
 
