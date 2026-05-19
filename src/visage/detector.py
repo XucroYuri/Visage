@@ -11,11 +11,29 @@ logger = logging.getLogger(__name__)
 # pyobjc Vision framework imports
 try:
     from Foundation import NSURL
-    from Vision import VNDetectFaceLandmarksRequest, VNImageRequestHandler
+    from Vision import (
+        VNDetectFaceLandmarksRequest,
+        VNDetectFaceRectanglesRequest,
+        VNImageRequestHandler,
+    )
 
     _VISION_AVAILABLE = True
 except ImportError:
     _VISION_AVAILABLE = False
+
+# macOS 26+ ships a VNFaceBBoxAligner that triggers intermittent SIGBUS
+# crashes in the pyobjc bridge when processing certain AI-generated images
+# via VNDetectFaceLandmarksRequest. Detect this and prefer the stable
+# rectangles-only request on affected OS versions.
+def _macos_major_version() -> int:
+    import platform
+    try:
+        # macOS version string like "26.5" (or "15.2" on older releases)
+        return int(platform.mac_ver()[0].split(".")[0])
+    except (ValueError, IndexError):
+        return 0
+
+_LANDMARKS_CRASH_BUG = _macos_major_version() >= 26
 
 # Padding ratios for expanding the tight face contour bbox.
 # Upward padding captures hair, sideways capture ears.
@@ -41,6 +59,20 @@ def _check_vision() -> None:
         )
 
 
+def _safe_points(region) -> list[tuple[float, float]]:
+    """Extract (x, y) tuples from a landmark region via normalizedPoints.
+
+    Converts the pyobjc varlist to a plain Python list in one shot,
+    minimizing bridge calls that can trigger SIGBUS on macOS 26.5
+    with the VNFaceBBoxAligner.
+    """
+    pts = region.normalizedPoints()
+    try:
+        return [(float(p.x), float(p.y)) for p in pts]
+    except (TypeError, AttributeError):
+        return []
+
+
 def _bbox_from_contour(
     face_contour,
     pixel_width: int,
@@ -56,13 +88,13 @@ def _bbox_from_contour(
     if face_contour is None or face_contour.pointCount() == 0:
         return None
 
-    norm_pts = face_contour.normalizedPoints()
-    if not norm_pts:
+    pts = _safe_points(face_contour)
+    if not pts:
         return None
 
     # Convert normalized bottom-left origin to pixel top-left origin
-    xs = [float(pt.x) * pixel_width for pt in norm_pts]
-    ys = [(1.0 - float(pt.y)) * pixel_height for pt in norm_pts]
+    xs = [x * pixel_width for x, _ in pts]
+    ys = [(1.0 - y) * pixel_height for _, y in pts]
 
     tight_left = min(xs)
     tight_right = max(xs)
@@ -100,12 +132,12 @@ def _bbox_from_median(
         return None
 
     # Get median line points (forehead → chin)
-    median_pts = median_line.normalizedPoints()
+    median_pts = _safe_points(median_line)
     if not median_pts:
         return None
 
-    ys = [(1.0 - float(pt.y)) * pixel_height for pt in median_pts]
-    xs = [float(pt.x) * pixel_width for pt in median_pts]
+    ys = [(1.0 - y) * pixel_height for _, y in median_pts]
+    xs = [x * pixel_width for x, _ in median_pts]
 
     top = min(ys)
     bottom = max(ys)
@@ -117,18 +149,18 @@ def _bbox_from_median(
         left_eye is not None and left_eye.pointCount() > 0
         and right_eye is not None and right_eye.pointCount() > 0
     ):
-        left_eye_pts = left_eye.normalizedPoints()
-        right_eye_pts = right_eye.normalizedPoints()
-        left_eye_center_x = (
-            sum(float(pt.x) for pt in left_eye_pts) / len(left_eye_pts)
-        )
-        right_eye_center_x = (
-            sum(float(pt.x) for pt in right_eye_pts) / len(right_eye_pts)
-        )
-        eye_dist = abs(right_eye_center_x - left_eye_center_x) * pixel_width
-        # Face width ≈ 2.5x inter-eye distance
-        face_w = int(eye_dist * 2.5)
-        half_w = face_w / 2
+        left_eye_pts = _safe_points(left_eye)
+        right_eye_pts = _safe_points(right_eye)
+        if not left_eye_pts or not right_eye_pts:
+            face_h = bottom - top
+            half_w = face_h * 0.5
+        else:
+            left_eye_center_x = sum(x for x, _ in left_eye_pts) / len(left_eye_pts)
+            right_eye_center_x = sum(x for x, _ in right_eye_pts) / len(right_eye_pts)
+            eye_dist = abs(right_eye_center_x - left_eye_center_x) * pixel_width
+            # Face width ≈ 2.5x inter-eye distance
+            face_w = int(eye_dist * 2.5)
+            half_w = face_w / 2
     else:
         # No eye data — estimate width from face height (head ≈ circular)
         face_h = bottom - top
@@ -209,26 +241,34 @@ def detect_faces(
     url = NSURL.fileURLWithPath_(image_path)
     handler = VNImageRequestHandler.alloc().initWithURL_options_(url, None)
 
-    request = VNDetectFaceLandmarksRequest.alloc().init()
-
-    success = handler.performRequests_error_([request], None)
-    if not success:
-        return []
-
-    observations = request.results()
-    if not observations:
-        return []
-
-    # Get image pixel dimensions via PIL
-    pixel_width, pixel_height = _get_image_dimensions(image_path)
-    if pixel_width == 0 or pixel_height == 0:
-        return []
+    # On macOS 26+, VNDetectFaceLandmarksRequest can trigger SIGBUS in the
+    # pyobjc bridge (VNFaceBBoxAligner bug). Fall back to the stable
+    # rectangles-only request. We lose contour-based bbox refinement and
+    # 5-point landmarks, but detection succeeds reliably.
+    use_simple_detection = _LANDMARKS_CRASH_BUG
+    if use_simple_detection:
+        request = VNDetectFaceRectanglesRequest.alloc().init()
+    else:
+        request = VNDetectFaceLandmarksRequest.alloc().init()
 
     result: list[tuple[FaceBox, float, list[tuple[float, float]] | None]] = []
     stats = {
         "total": 0, "contour": 0, "median": 0, "default": 0,
         "shrunk": 0, "aspect_ratio_sum": 0.0,
     }
+
+    success = handler.performRequests_error_([request], None)
+    if not success:
+        return [], stats
+
+    observations = request.results()
+    if not observations:
+        return [], stats
+
+    # Get image pixel dimensions via PIL
+    pixel_width, pixel_height = _get_image_dimensions(image_path)
+    if pixel_width == 0 or pixel_height == 0:
+        return [], stats
 
     for obs in observations:
         confidence = float(obs.confidence())
@@ -317,39 +357,40 @@ def _extract_5_landmarks(
         return None
 
     def _centroid(region) -> tuple[float, float]:
-        pts = region.normalizedPoints()
-        cx = sum(float(pt.x) for pt in pts) / len(pts)
-        cy = sum(1.0 - float(pt.y) for pt in pts) / len(pts)
+        pts = _safe_points(region)
+        if not pts:
+            return (0.0, 0.0)
+        cx = sum(x for x, _ in pts) / len(pts)
+        cy = sum(1.0 - y for _, y in pts) / len(pts)
         return (cx * pixel_width, cy * pixel_height)
 
     def _nose_tip(region) -> tuple[float, float]:
         """Nose tip is the lowest point in the nose region (top-left coords)."""
-        pts = region.normalizedPoints()
+        pts = _safe_points(region)
         best = None
         best_y = -1.0
-        for pt in pts:
-            y = 1.0 - float(pt.y)
-            if y > best_y:
-                best_y = y
-                best = (float(pt.x) * pixel_width, y * pixel_height)
+        for x, y in pts:
+            py = 1.0 - y
+            if py > best_y:
+                best_y = py
+                best = (x * pixel_width, py * pixel_height)
         return best
 
     def _mouth_corners(region) -> tuple[tuple[float, float], tuple[float, float]]:
         """Leftmost and rightmost points of the outer lip contour."""
-        pts = region.normalizedPoints()
+        pts = _safe_points(region)
         leftmost = None
         rightmost = None
         min_x = float("inf")
         max_x = float("-inf")
-        for pt in pts:
-            x = float(pt.x)
-            y = 1.0 - float(pt.y)
+        for x, y in pts:
+            py = 1.0 - y
             if x < min_x:
                 min_x = x
-                leftmost = (x * pixel_width, y * pixel_height)
+                leftmost = (x * pixel_width, py * pixel_height)
             if x > max_x:
                 max_x = x
-                rightmost = (x * pixel_width, y * pixel_height)
+                rightmost = (x * pixel_width, py * pixel_height)
         return leftmost, rightmost
 
     left_eye = _centroid(left_eye_lm)

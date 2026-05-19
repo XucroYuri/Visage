@@ -464,6 +464,7 @@ def merge_clusters(
 
         a, b = best_pair
         # Merge b into a
+        size_b = cluster_embeddings[b].shape[0]
         merged_embs = np.vstack([cluster_embeddings[a], cluster_embeddings[b]])
         cluster_embeddings[a] = merged_embs
         centroid = merged_embs.mean(axis=0)
@@ -475,7 +476,6 @@ def merge_clusters(
         labels[labels == b] = a
         merges_performed += 1
 
-        size_b = cluster_embeddings[b].shape[0]
         logger.debug(
             "Merging cluster %d into %d (similarity: %.3f, sizes: %d+%d)",
             b, a, best_sim, merged_embs.shape[0] - size_b, size_b,

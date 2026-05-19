@@ -70,7 +70,8 @@ class TestCheckVision:
 class TestDetectFaces:
     def test_no_faces_found(self):
         """When Vision returns no observations."""
-        with patch("visage.detector._VISION_AVAILABLE", True):
+        with patch("visage.detector._VISION_AVAILABLE", True), \
+             patch("visage.detector._LANDMARKS_CRASH_BUG", False):
             with patch("visage.detector.VNDetectFaceLandmarksRequest") as mock_req_cls, \
                  patch("visage.detector.VNImageRequestHandler") as mock_handler_cls, \
                  patch("visage.detector.NSURL"):
@@ -86,8 +87,13 @@ class TestDetectFaces:
                 mock_req_cls.alloc.return_value.init.return_value = request
 
                 from visage.detector import detect_faces
-                result = detect_faces("/tmp/test.jpg")
+                result, stats = detect_faces("/tmp/test.jpg")
                 assert result == []
+                expected_stats = {
+                    "total": 0, "contour": 0, "median": 0,
+                    "default": 0, "shrunk": 0, "aspect_ratio_sum": 0.0,
+                }
+                assert stats == expected_stats
 
     def test_returns_face_boxes(self, tmp_path):
         """Vision detects one face — verify FaceBox conversion."""
@@ -173,7 +179,8 @@ class TestDetectFaces:
         landmarks.outerLips.return_value = None
         obs.landmarks.return_value = landmarks
 
-        with patch("visage.detector._VISION_AVAILABLE", True):
+        with patch("visage.detector._VISION_AVAILABLE", True), \
+             patch("visage.detector._LANDMARKS_CRASH_BUG", False):
             with patch("visage.detector.VNDetectFaceLandmarksRequest") as mock_req_cls, \
                  patch("visage.detector.VNImageRequestHandler") as mock_handler_cls, \
                  patch("visage.detector.NSURL"), \
@@ -205,7 +212,8 @@ class TestDetectFaces:
         obs = _make_mock_observation(confidence=0.9, x=0.1, y=0.2, w=0.3, h=0.4)
         obs.landmarks.return_value = None
 
-        with patch("visage.detector._VISION_AVAILABLE", True):
+        with patch("visage.detector._VISION_AVAILABLE", True), \
+             patch("visage.detector._LANDMARKS_CRASH_BUG", False):
             with patch("visage.detector.VNDetectFaceLandmarksRequest") as mock_req_cls, \
                  patch("visage.detector.VNImageRequestHandler") as mock_handler_cls, \
                  patch("visage.detector.NSURL"), \
