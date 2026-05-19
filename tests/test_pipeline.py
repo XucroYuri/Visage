@@ -73,10 +73,10 @@ class TestRunPipelineSuccess:
         mock_cache_cls.return_value = mock_cache
 
         mock_scan.return_value = ["/tmp/a.jpg", "/tmp/b.jpg"]
-        mock_detect.return_value = [
+        mock_detect.return_value = ([
             _mock_image_result("/tmp/a.jpg"),
             _mock_image_result("/tmp/b.jpg"),
-        ]
+        ], {})
 
         def embed_side_effect(results, **kwargs):
             return results, 0
@@ -144,7 +144,7 @@ class TestRunPipelineEarlyReturns:
         mock_cache.load_checkpoint.return_value = None
         mock_cache_cls.return_value = mock_cache
         mock_scan.return_value = ["/tmp/a.jpg"]
-        mock_detect.return_value = [_mock_image_result("/tmp/a.jpg", faces=0)]
+        mock_detect.return_value = ([_mock_image_result("/tmp/a.jpg", faces=0)], {})
 
         result = run_pipeline("/tmp/input")
         assert result.images_with_faces == 0
@@ -161,7 +161,7 @@ class TestRunPipelineEarlyReturns:
         mock_cache.load_checkpoint.return_value = None
         mock_cache_cls.return_value = mock_cache
         mock_scan.return_value = ["/tmp/a.jpg"]
-        mock_detect.return_value = [_mock_image_result("/tmp/a.jpg")]
+        mock_detect.return_value = ([_mock_image_result("/tmp/a.jpg")], {})
         mock_embed.return_value = ([_mock_image_result("/tmp/a.jpg")], 0)
         mock_extract.return_value = (np.empty((0, 128)), [])
 
@@ -192,7 +192,7 @@ class TestRunPipelineModes:
         mock_cache_cls.return_value = mock_cache
 
         mock_scan.return_value = ["/tmp/a.jpg"]
-        mock_detect.return_value = [_mock_image_result("/tmp/a.jpg")]
+        mock_detect.return_value = ([_mock_image_result("/tmp/a.jpg")], {})
         mock_embed.return_value = ([_mock_image_result("/tmp/a.jpg")], 0)
         mock_extract.return_value = (np.random.randn(1, 128), [("/tmp/a.jpg", 0)])
 
@@ -228,7 +228,7 @@ class TestRunPipelineConfig:
         mock_cache_cls.return_value = mock_cache
 
         mock_scan.return_value = ["/tmp/a.jpg"]
-        mock_detect.return_value = [_mock_image_result("/tmp/a.jpg")]
+        mock_detect.return_value = ([_mock_image_result("/tmp/a.jpg")], {})
         mock_embed.return_value = ([_mock_image_result("/tmp/a.jpg")], 0)
         mock_extract.return_value = (np.random.randn(1, 128), [("/tmp/a.jpg", 0)])
         mock_cluster.return_value = ClusterResult(
@@ -265,7 +265,7 @@ class TestRunPipelineOutputDir:
         mock_cache_cls.return_value = mock_cache
 
         mock_scan.return_value = ["/tmp/a.jpg"]
-        mock_detect.return_value = [_mock_image_result("/tmp/a.jpg")]
+        mock_detect.return_value = ([_mock_image_result("/tmp/a.jpg")], {})
         mock_embed.return_value = ([_mock_image_result("/tmp/a.jpg")], 0)
         mock_extract.return_value = (np.random.randn(1, 128), [("/tmp/a.jpg", 0)])
 
@@ -299,7 +299,7 @@ class TestRunPipelineErrors:
         mock_scan.return_value = ["/tmp/a.jpg", "/tmp/b.jpg"]
         error_result = _mock_image_result("/tmp/a.jpg", error="corrupt image")
         ok_result = _mock_image_result("/tmp/b.jpg")
-        mock_detect.return_value = [error_result, ok_result]
+        mock_detect.return_value = ([error_result, ok_result], {})
         mock_embed.return_value = ([ok_result], 0)
 
         result = run_pipeline("/tmp/input")

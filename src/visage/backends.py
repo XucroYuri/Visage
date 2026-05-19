@@ -72,15 +72,23 @@ class InsightFaceBackend:
 
     Optimised for memory: only loads detection + recognition modules,
     and runs on face crops (not full images) to minimise temporary memory.
+
+    Falls back to dlib embeddings when InsightFace detection fails on a crop.
     """
 
     name = "insightface"
     embedding_dim = 512
 
-    def __init__(self, det_size: tuple[int, int] = (320, 320)) -> None:
+    def __init__(
+        self,
+        det_size: tuple[int, int] = (640, 640),
+        fallback_model: str = "small",
+    ) -> None:
         self._det_size = det_size
+        self._fallback_model = fallback_model
         self._lock = threading.Lock()
         self._app = None
+        self._dlib_fallback = None  # lazy-init on first use
 
         try:
             import insightface  # noqa: F401
@@ -125,14 +133,27 @@ class InsightFaceBackend:
                 faces = self._app.get(bgr_crop)
                 if faces:
                     # The crop contains one face — return the best detection
-                    return faces[0].embedding
+                    embedding = faces[0].embedding
+                    if embedding is not None:
+                        return embedding
             except Exception:
                 logger.warning(
                     "InsightFace embedding failed for face at %s",
                     face_box, exc_info=True,
                 )
 
-        return None
+        # Fall back to dlib if InsightFace detection fails
+        return self._dlib_generate(image, face_box)
+
+    def _dlib_generate(self, image: np.ndarray, face_box: FaceBox) -> np.ndarray | None:
+        """Fallback embedding via dlib when InsightFace fails."""
+        if self._dlib_fallback is None:
+            try:
+                import face_recognition  # noqa: F401
+            except ImportError:
+                return None
+            self._dlib_fallback = DlibBackend(model=self._fallback_model)
+        return self._dlib_fallback.generate(image, face_box)
 
     @staticmethod
     def _crop_face(image: np.ndarray, face_box: FaceBox) -> np.ndarray:
@@ -171,7 +192,7 @@ def get_backend(name: str, **kwargs) -> EmbeddingBackend:
         )
     elif name == "insightface":
         return InsightFaceBackend(
-            det_size=kwargs.get("det_size", (320, 320)),
+            det_size=kwargs.get("det_size", (640, 640)),
         )
     else:
         raise ValueError(f"Unknown embedding backend: {name!r}. Choose 'dlib' or 'insightface'.")

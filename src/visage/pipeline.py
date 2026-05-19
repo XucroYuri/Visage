@@ -132,7 +132,7 @@ def run_pipeline(
     def detection_progress(completed: int, total: int) -> None:
         prog.update("2/5 Detection", completed, total)
 
-    image_results = detect_faces_batch(
+    image_results, detection_stats = detect_faces_batch(
         image_paths,
         min_confidence=cfg.detection_confidence,
         min_face_size=cfg.min_face_size,
@@ -145,10 +145,24 @@ def run_pipeline(
     detection_errors = sum(1 for r in image_results if r.error)
     errors.extend(r.error for r in image_results if r.error)
 
+    # Build detection quality summary
+    det_total = detection_stats.get("total", 0)
+    det_detail = ""
+    if det_total > 0:
+        contour_pct = detection_stats.get("contour", 0) / det_total * 100
+        shrunk = detection_stats.get("shrunk", 0)
+        aspect_sum = detection_stats.get("aspect_ratio_sum", 0.0)
+        mean_aspect = aspect_sum / det_total if det_total > 0 else 0.0
+        det_detail = (
+            f" [{contour_pct:.0f}% contour, shrunk={shrunk}, "
+            f"aspect={mean_aspect:.2f}]"
+        )
+
     phase_durations["detection"] = time.time() - phase_start
     prog.finish_phase(
         "2/5 Detection",
         f"{images_with_faces} images with faces, {total_faces} faces detected"
+        + det_detail
         + (f", {detection_errors} errors" if detection_errors else ""),
     )
     cache.save_checkpoint(2, message=f"{total_faces} faces in {images_with_faces} images")

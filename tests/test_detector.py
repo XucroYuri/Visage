@@ -98,7 +98,9 @@ class TestDetectFaces:
         _obs = _make_mock_observation(confidence=0.9, x=0.1, y=0.2, w=0.3, h=0.4)
 
         with patch("visage.detector.detect_faces") as mock_detect:
-            mock_detect.return_value = [(FaceBox(top=320, right=400, bottom=160, left=100), 0.9)]
+            mock_detect.return_value = (
+                [(FaceBox(top=320, right=400, bottom=160, left=100), 0.9, None)], {},
+            )
 
             from visage.detector import detect_faces_single
             result = detect_faces_single(str(img_path))
@@ -109,7 +111,7 @@ class TestDetectFaces:
     def test_filters_low_confidence(self, tmp_path):
         """Face with confidence below threshold is filtered out."""
         with patch("visage.detector.detect_faces") as mock_detect:
-            mock_detect.return_value = []  # all faces filtered by confidence
+            mock_detect.return_value = ([], {})  # all faces filtered by confidence
 
             from visage.detector import detect_faces_single
             result = detect_faces_single(str(tmp_path / "test.jpg"), min_confidence=0.5)
@@ -119,7 +121,7 @@ class TestDetectFaces:
         """Face smaller than min_face_size is filtered out by detect_faces."""
         with patch("visage.detector.detect_faces") as mock_detect:
             # detect_faces already filters — returns empty for small faces
-            mock_detect.return_value = []
+            mock_detect.return_value = ([], {})
 
             from visage.detector import detect_faces_single
             result = detect_faces_single(str(tmp_path / "test.jpg"), min_face_size=40)
@@ -132,7 +134,7 @@ class TestDetectFaces:
         expected_box = FaceBox(top=320, right=400, bottom=640, left=100)
 
         with patch("visage.detector.detect_faces") as mock_detect:
-            mock_detect.return_value = [(expected_box, 0.9)]
+            mock_detect.return_value = ([(expected_box, 0.9, None)], {})
 
             from visage.detector import detect_faces_single
             result = detect_faces_single(str(tmp_path / "test.jpg"))
@@ -164,6 +166,11 @@ class TestDetectFaces:
 
         landmarks = MagicMock()
         landmarks.faceContour.return_value = contour
+        landmarks.medianLine.return_value = None
+        landmarks.leftEye.return_value = None
+        landmarks.rightEye.return_value = None
+        landmarks.nose.return_value = None
+        landmarks.outerLips.return_value = None
         obs.landmarks.return_value = landmarks
 
         with patch("visage.detector._VISION_AVAILABLE", True):
@@ -181,10 +188,10 @@ class TestDetectFaces:
                 mock_req_cls.alloc.return_value.init.return_value = request
 
                 from visage.detector import detect_faces
-                result = detect_faces(str(img_path))
+                result, stats = detect_faces(str(img_path))
 
                 assert len(result) == 1
-                fb, conf = result[0]
+                fb, conf, lm5 = result[0]
                 # Contour bbox should be tighter than the default Vision bbox
                 # Default bbox would be: top=320, right=400, bottom=160, left=100
                 # Contour bbox (with padding) should differ from the default
@@ -213,10 +220,10 @@ class TestDetectFaces:
                 mock_req_cls.alloc.return_value.init.return_value = request
 
                 from visage.detector import detect_faces
-                result = detect_faces(str(img_path))
+                result, stats = detect_faces(str(img_path))
 
                 assert len(result) == 1
-                fb, conf = result[0]
+                fb, conf, lm5 = result[0]
                 # Vision bbox x=0.1,y=0.2,w=0.3,h=0.4 on 1000x800:
                 # left=100, right=400, top=320, bottom=640
                 assert fb.left == 100
@@ -315,7 +322,9 @@ class TestGetImageDimensions:
 class TestDetectFacesSingle:
     def test_returns_image_result_with_faces(self, tmp_path):
         with patch("visage.detector.detect_faces") as mock_detect:
-            mock_detect.return_value = [(FaceBox(top=10, right=110, bottom=110, left=10), 0.9)]
+            mock_detect.return_value = (
+                [(FaceBox(top=10, right=110, bottom=110, left=10), 0.9, None)], {},
+            )
 
             from visage.detector import detect_faces_single
             result = detect_faces_single(str(tmp_path / "test.jpg"))
@@ -325,26 +334,12 @@ class TestDetectFacesSingle:
             assert result.error is None
 
     def test_no_faces_returns_skipped(self, tmp_path):
-        img_path = tmp_path / "test.jpg"
-        Image.new("RGB", (100, 100)).save(img_path, "JPEG")
+        with patch("visage.detector.detect_faces", return_value=([], {})):
+            from visage.detector import detect_faces_single
+            result = detect_faces_single(str(tmp_path / "test.jpg"))
 
-        with patch("visage.detector._VISION_AVAILABLE", True):
-            with patch("visage.detector.VNDetectFaceLandmarksRequest") as mock_req_cls, \
-                 patch("visage.detector.VNImageRequestHandler") as mock_handler_cls, \
-                 patch("visage.detector.NSURL"):
-
-                handler = MagicMock()
-                handler.performRequests_error_.return_value = True
-                mock_handler_cls.alloc.return_value.initWithURL_options_.return_value = handler
-                request = MagicMock()
-                request.results.return_value = None
-                mock_req_cls.alloc.return_value.init.return_value = request
-
-                from visage.detector import detect_faces_single
-                result = detect_faces_single(str(img_path))
-
-                assert result.skipped is True
-                assert result.faces == []
+            assert result.skipped is True
+            assert result.faces == []
 
     def test_exception_returns_error(self):
         with patch("visage.detector.detect_faces") as mock_detect:
@@ -381,7 +376,7 @@ class TestDetectFacesBatch:
                 mock_req_cls.alloc.return_value.init.return_value = request
 
                 from visage.detector import detect_faces_batch
-                results = detect_faces_batch(paths)
+                results, stats = detect_faces_batch(paths)
 
                 assert len(results) == 3
                 for r in results:
@@ -409,7 +404,7 @@ class TestDetectFacesBatch:
                 mock_req_cls.alloc.return_value.init.return_value = request
 
                 from visage.detector import detect_faces_batch
-                results = detect_faces_batch(
+                results, stats = detect_faces_batch(
                     paths,
                     progress_callback=lambda completed, total: callbacks.append((completed, total)),
                 )

@@ -299,8 +299,12 @@ def compute_cluster_confidences(
 ) -> dict[int, float]:
     """Compute a confidence score for each cluster.
 
-    The confidence is the average cosine similarity of each face embedding
-    to the cluster centroid. Higher values indicate a more cohesive cluster.
+    The confidence combines the mean cosine similarity to centroid with the
+    standard deviation of similarities. A cluster with high mean AND low std
+    (tightly packed) scores higher than one with high mean but large spread.
+
+    Score = mean_sim * (1 - std_sim), clipped to [0, 1].
+    Single-face clusters default to 1.0 (no within-cluster variance to measure).
 
     Args:
         cluster_result: ClusterResult with normalized embeddings and labels.
@@ -322,7 +326,16 @@ def compute_cluster_confidences(
 
         # Cosine similarity of each embedding to centroid
         similarities = cluster_embs @ centroid
-        confidences[label] = float(np.clip(similarities.mean(), 0.0, 1.0))
+        mean_sim = float(np.clip(similarities.mean(), 0.0, 1.0))
+
+        # Penalize high variance — tight clusters are more reliable
+        if len(similarities) > 1:
+            std_sim = float(similarities.std())
+            # Scale: std of 0.15+ fully penalizes, 0.0 = no penalty
+            penalty = min(1.0, std_sim / 0.15)
+            confidences[label] = float(np.clip(mean_sim * (1.0 - 0.5 * penalty), 0.0, 1.0))
+        else:
+            confidences[label] = 1.0  # single-face cluster — default confident
 
     return confidences
 

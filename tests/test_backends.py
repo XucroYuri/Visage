@@ -138,6 +138,9 @@ class TestInsightFaceBackend:
         backend._available = True
         backend._app = MagicMock()
         backend._app.get.return_value = []
+        # Prevent dlib fallback from generating an actual embedding
+        backend._dlib_fallback = MagicMock()
+        backend._dlib_fallback.generate.return_value = None
 
         face_box = FaceBox(top=10, right=110, bottom=110, left=10)
         result = backend.generate(np.zeros((100, 100, 3), dtype=np.uint8), face_box)

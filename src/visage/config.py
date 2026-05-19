@@ -37,9 +37,9 @@ class VisageConfig:
     # >0 can trigger sklearn Cython bug with certain datasets
     cluster_selection_epsilon: float = 0.0
     cluster_selection_method: str = "eom"  # "eom" (stable) or "leaf" (fine-grained)
-    # higher = less merging (0.75 ≈ 41° centroid angle)
-    merge_threshold: float = 0.75
-    small_merge_threshold: float = 0.70  # relaxed threshold when one cluster is small
+    # higher = less merging (0.70 ≈ 45° centroid angle)
+    merge_threshold: float = 0.70
+    small_merge_threshold: float = 0.65  # relaxed threshold when one cluster is small
     min_reliable_size: int = 10  # clusters below this size use relaxed threshold
 
     # Head features (supplementary signal for clustering)

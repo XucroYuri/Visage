@@ -45,6 +45,9 @@ class DetectedFace:
     head_features: np.ndarray | None = None
     image_path: str = ""
     face_index: int = 0
+    # 5 facial landmarks for alignment: (left_eye, right_eye, nose, left_mouth, right_mouth)
+    # Each landmark is (x, y) in pixel coordinates.
+    landmarks_5: list[tuple[float, float]] | None = None
 
 
 @dataclass
@@ -55,6 +58,7 @@ class ImageResult:
     faces: list[DetectedFace] = field(default_factory=list)
     error: str | None = None
     skipped: bool = False
+    detection_stats: dict[str, int] | None = None  # per-image detection metrics
 
 
 @dataclass
@@ -75,6 +79,28 @@ class OrganizePlan:
     person_folders: dict[int, list[str]]  # cluster_id -> list of image paths
     unclustered: list[str]  # images with faces that didn't cluster
     no_faces: list[str]  # images with no detected faces
+
+
+@dataclass
+class DetectionStats:
+    """Quality metrics collected during face detection."""
+
+    total_faces: int = 0
+    contour_boxes: int = 0  # bboxes from face contour landmarks
+    median_boxes: int = 0  # bboxes from median line fallback
+    default_boxes: int = 0  # bboxes from Vision default bbox
+    body_shrunk: int = 0  # bboxes shrunk (aspect ratio > 1.8)
+    aligned_faces: int = 0  # faces that were aligned before embedding
+    contour_rate: float = 0.0  # fraction using contour landmarks
+    mean_aspect_ratio: float = 0.0  # average height/width ratio
+
+    def compute_rates(self) -> None:
+        """Compute derived rates after populating counts."""
+        if self.total_faces > 0:
+            self.contour_rate = self.contour_boxes / self.total_faces
+            if self.total_faces > 0:
+                # mean_aspect_ratio is already accumulated — no-op here
+                pass
 
 
 @dataclass

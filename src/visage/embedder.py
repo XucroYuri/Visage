@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 import numpy as np
 
+from .align import align_face
 from .backends import EmbeddingBackend
 from .cache import EmbeddingCache
 from .head_features import extract_head_features
@@ -120,8 +121,23 @@ def generate_embeddings_for_image(
             )
             continue
 
+        # Try face alignment for more stable embeddings
+        aligned_image = None
+        aligned_box = None
+        if face.landmarks_5 is not None:
+            aligned = align_face(image_array, face)
+            if aligned is not None:
+                aligned_image = aligned
+                # Face fills the aligned image — create a full-image bbox
+                sz = aligned.shape[0]
+                aligned_box = FaceBox(top=0, right=sz, bottom=sz, left=0)
+
+        # Use aligned image if available, otherwise use full image with face box
+        src_image = aligned_image if aligned_image is not None else image_array
+        src_box = aligned_box if aligned_box is not None else face.face_box
+
         face.embedding = generate_embedding(
-            image_array, face.face_box, model=model, num_jitters=num_jitters,
+            src_image, src_box, model=model, num_jitters=num_jitters,
             backend=backend,
         )
 
