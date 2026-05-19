@@ -11,11 +11,17 @@ logger = logging.getLogger(__name__)
 # pyobjc Vision framework imports
 try:
     from Foundation import NSURL
-    from Vision import VNDetectFaceRectanglesRequest, VNImageRequestHandler
+    from Vision import VNDetectFaceLandmarksRequest, VNImageRequestHandler
 
     _VISION_AVAILABLE = True
 except ImportError:
     _VISION_AVAILABLE = False
+
+# Padding ratios for expanding the tight face contour bbox.
+# Upward padding captures hair, sideways capture ears.
+_CONTOUR_PAD_UP = 0.45     # 45% of face height upward (hair)
+_CONTOUR_PAD_SIDE = 0.20   # 20% of face width each side (ears)
+_CONTOUR_PAD_DOWN = 0.10   # 10% of face height downward (chin margin)
 
 
 def _check_vision() -> None:
@@ -27,12 +33,57 @@ def _check_vision() -> None:
         )
 
 
+def _bbox_from_contour(
+    face_contour,
+    pixel_width: int,
+    pixel_height: int,
+) -> FaceBox | None:
+    """Compute a tight bounding box from face contour landmark points.
+
+    Uses normalizedPoints (0-1, bottom-left origin) from the faceContour
+    landmark region. Applies padding to capture hair and ears.
+
+    Returns None if contour has no points.
+    """
+    if face_contour is None or face_contour.pointCount() == 0:
+        return None
+
+    norm_pts = face_contour.normalizedPoints()
+    if not norm_pts:
+        return None
+
+    # Convert normalized bottom-left origin to pixel top-left origin
+    xs = [float(pt.x) * pixel_width for pt in norm_pts]
+    ys = [(1.0 - float(pt.y)) * pixel_height for pt in norm_pts]
+
+    tight_left = min(xs)
+    tight_right = max(xs)
+    tight_top = min(ys)
+    tight_bottom = max(ys)
+
+    # Apply padding to capture hair/ears
+    face_w = tight_right - tight_left
+    face_h = tight_bottom - tight_top
+
+    left = max(0, int(tight_left - face_w * _CONTOUR_PAD_SIDE))
+    right = min(pixel_width, int(tight_right + face_w * _CONTOUR_PAD_SIDE))
+    top = max(0, int(tight_top - face_h * _CONTOUR_PAD_UP))
+    bottom = min(pixel_height, int(tight_bottom + face_h * _CONTOUR_PAD_DOWN))
+
+    return FaceBox(top=top, right=right, bottom=bottom, left=left)
+
+
 def detect_faces(
     image_path: str,
     min_confidence: float = 0.5,
     min_face_size: int = 40,
 ) -> list[tuple[FaceBox, float]]:
     """Detect faces in an image using macOS Vision framework.
+
+    Uses VNDetectFaceLandmarksRequest which provides both face bounding
+    boxes and facial landmarks. When face contour landmarks are available,
+    computes a tighter bounding box from the contour (with padding for
+    hair/ears) instead of the overly large default Vision bbox.
 
     Args:
         image_path: Path to the image file.
@@ -47,7 +98,7 @@ def detect_faces(
     url = NSURL.fileURLWithPath_(image_path)
     handler = VNImageRequestHandler.alloc().initWithURL_options_(url, None)
 
-    request = VNDetectFaceRectanglesRequest.alloc().init()
+    request = VNDetectFaceLandmarksRequest.alloc().init()
 
     success = handler.performRequests_error_([request], None)
     if not success:
@@ -57,46 +108,41 @@ def detect_faces(
     if not observations:
         return []
 
-    # Collect (normalized_coords, confidence) tuples from Vision observations
-    # Vision uses normalized coordinates (0-1), origin bottom-left
-    raw_faces: list[tuple[float, float, float, float, float]] = []
-    for obs in observations:
-        confidence = float(obs.confidence())
-        if confidence < min_confidence:
-            continue
-
-        bbox = obs.boundingBox()
-        raw_faces.append((
-            float(bbox.origin.x),
-            float(bbox.origin.y),
-            float(bbox.size.width),
-            float(bbox.size.height),
-            confidence,
-        ))
-
-    if not raw_faces:
-        return []
-
     # Get image pixel dimensions via PIL
     pixel_width, pixel_height = _get_image_dimensions(image_path)
     if pixel_width == 0 or pixel_height == 0:
         return []
 
     result: list[tuple[FaceBox, float]] = []
-    for x, y, w, h, conf in raw_faces:
-        # Convert normalized bottom-left origin to pixel top-left origin
-        left = int(x * pixel_width)
-        bottom = int(y * pixel_height)
-        right = int((x + w) * pixel_width)
-        top = int((1.0 - y - h) * pixel_height)
+    for obs in observations:
+        confidence = float(obs.confidence())
+        if confidence < min_confidence:
+            continue
 
-        face_box = FaceBox(top=top, right=right, bottom=bottom, left=left)
+        # Try to compute tight bbox from face contour landmarks
+        face_box = None
+        landmarks = obs.landmarks()
+        if landmarks is not None:
+            face_box = _bbox_from_contour(
+                landmarks.faceContour(), pixel_width, pixel_height,
+            )
+
+        # Fallback to Vision's default bounding box
+        if face_box is None:
+            bbox = obs.boundingBox()
+            x, y = float(bbox.origin.x), float(bbox.origin.y)
+            w, h = float(bbox.size.width), float(bbox.size.height)
+            left = int(x * pixel_width)
+            right = int((x + w) * pixel_width)
+            top = int((1.0 - y - h) * pixel_height)
+            bottom = int((1.0 - y) * pixel_height)
+            face_box = FaceBox(top=top, right=right, bottom=bottom, left=left)
 
         # Filter by minimum face size
         if face_box.width < min_face_size or face_box.height < min_face_size:
             continue
 
-        result.append((face_box, conf))
+        result.append((face_box, confidence))
 
     return result
 
