@@ -61,7 +61,7 @@ def _run_pipeline(
     # Phase 2: Detect faces
     _emit(2, "Detecting faces...")
     t0 = time.time()
-    image_results = detect_faces_batch(
+    image_results, _detection_stats = detect_faces_batch(
         image_paths,
         min_confidence=config.detection_confidence,
         min_face_size=config.min_face_size,
