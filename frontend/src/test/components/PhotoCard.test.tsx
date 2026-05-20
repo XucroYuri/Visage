@@ -5,6 +5,8 @@ import type { PhotoInfo, ClusterInfo } from "../../api";
 
 const basePhoto: PhotoInfo = {
   path: "/photos/img001.jpg",
+  width: 640,
+  height: 480,
   faces: [
     { top: 10, right: 100, bottom: 120, left: 5 },
     { top: 50, right: 200, bottom: 180, left: 80 },

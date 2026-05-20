@@ -8,6 +8,8 @@ export interface FaceBox {
 export interface PhotoInfo {
   path: string;
   faces: FaceBox[];
+  width: number;
+  height: number;
 }
 
 export interface ClusterInfo {

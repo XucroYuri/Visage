@@ -42,7 +42,6 @@ export function PhotoCard({
 }: PhotoCardProps) {
   const [showFull, setShowFull] = useState(false);
   const [showMoveMenu, setShowMoveMenu] = useState(false);
-  const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
   const moveMenuRef = useRef<HTMLDivElement>(null);
   const filename = photo.path.split("/").pop() || photo.path;
 
@@ -114,25 +113,21 @@ export function PhotoCard({
             }}
             tabIndex={0}
             loading="lazy"
-            onLoad={(e) => {
-              const img = e.currentTarget;
-              setImgSize({ w: img.naturalWidth, h: img.naturalHeight });
-            }}
             draggable={false}
           />
           {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
 
-          {/* Face bounding boxes */}
-          {imgSize &&
+          {/* Face bounding boxes — uses original image dimensions for correct percentages */}
+          {photo.width > 0 &&
             photo.faces.map((face, i) => (
               <div
                 key={i}
                 className="absolute border-2 border-green-400 rounded-sm pointer-events-none"
                 style={{
-                  left: `${(face.left / imgSize.w) * 100}%`,
-                  top: `${(face.top / imgSize.h) * 100}%`,
-                  width: `${((face.right - face.left) / imgSize.w) * 100}%`,
-                  height: `${((face.bottom - face.top) / imgSize.h) * 100}%`,
+                  left: `${(face.left / photo.width) * 100}%`,
+                  top: `${(face.top / photo.height) * 100}%`,
+                  width: `${((face.right - face.left) / photo.width) * 100}%`,
+                  height: `${((face.bottom - face.top) / photo.height) * 100}%`,
                 }}
               />
             ))}

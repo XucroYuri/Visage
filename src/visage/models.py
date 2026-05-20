@@ -59,6 +59,8 @@ class ImageResult:
     error: str | None = None
     skipped: bool = False
     detection_stats: dict[str, int] | None = None  # per-image detection metrics
+    image_width: int = 0  # original image width in pixels
+    image_height: int = 0  # original image height in pixels
 
 
 @dataclass

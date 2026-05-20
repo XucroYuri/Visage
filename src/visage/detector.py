@@ -433,6 +433,7 @@ def detect_faces_single(
         ImageResult with detected faces or error info.
     """
     try:
+        img_w, img_h = _get_image_dimensions(image_path)
         face_results, stats = detect_faces(image_path, min_confidence, min_face_size)
         faces = [
             DetectedFace(
@@ -445,8 +446,8 @@ def detect_faces_single(
             for i, (fb, conf, lm5) in enumerate(face_results)
         ]
         if not faces:
-            return ImageResult(path=image_path, skipped=True)
-        return ImageResult(path=image_path, faces=faces, detection_stats=stats)
+            return ImageResult(path=image_path, skipped=True, image_width=img_w, image_height=img_h)
+        return ImageResult(path=image_path, faces=faces, detection_stats=stats, image_width=img_w, image_height=img_h)
     except Exception as exc:
         logger.warning("Face detection failed for %s: %s", image_path, exc)
         return ImageResult(path=image_path, error=str(exc))

@@ -59,7 +59,10 @@ class Workspace:
 
         # Image path → face bounding boxes (for frontend overlay)
         self._face_boxes: dict[str, list[dict]] = {}
+        # Image path → (width, height) of original image
+        self._image_sizes: dict[str, tuple[int, int]] = {}
         for r in image_results:
+            self._image_sizes[r.path] = (r.image_width, r.image_height)
             if r.faces:
                 self._face_boxes[r.path] = [
                     {
@@ -525,8 +528,14 @@ class Workspace:
     # ── API serialization ────────────────────────────────────────
 
     def _photo_dict(self, path: str) -> dict:
-        """Build a photo entry with face bounding boxes."""
-        return {"path": path, "faces": self._face_boxes.get(path, [])}
+        """Build a photo entry with face bounding boxes and original image dimensions."""
+        w, h = self._image_sizes.get(path, (0, 0))
+        return {
+            "path": path,
+            "faces": self._face_boxes.get(path, []),
+            "width": w,
+            "height": h,
+        }
 
     def to_api_dict(self) -> dict:
         """Serialize workspace state for the frontend API.

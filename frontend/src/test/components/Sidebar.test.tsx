@@ -31,8 +31,8 @@ const mockWs: WorkspaceState = {
     { id: 2, name: "Family", photos: [], photo_count: 12, thumbnail: null, confidence: 0.88 },
   ],
   noise_photos: [
-    { path: "/noise/1.jpg", faces: [] },
-    { path: "/noise/2.jpg", faces: [] },
+    { path: "/noise/1.jpg", faces: [], width: 640, height: 480 },
+    { path: "/noise/2.jpg", faces: [], width: 640, height: 480 },
   ],
   all_photos: [],
   next_cluster_id: 3,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { PhotoInfo } from "../api";
 import { getImageUrl } from "../api";
 
@@ -23,7 +23,6 @@ export function PhotoViewer({
   onPrev,
   onNext,
 }: PhotoViewerProps) {
-  const [fullSize, setFullSize] = useState<{ w: number; h: number } | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const filename = photo.path.split("/").pop() || photo.path;
 
@@ -79,22 +78,18 @@ export function PhotoViewer({
           src={getImageUrl(photo.path, "full")}
           alt={filename}
           className="max-h-[90vh] max-w-[90vw] object-contain rounded shadow-2xl"
-          onLoad={(e) => {
-            const img = e.currentTarget;
-            setFullSize({ w: img.naturalWidth, h: img.naturalHeight });
-          }}
         />
-        {/* Face bounding boxes */}
-        {fullSize &&
+        {/* Face bounding boxes — uses original image dimensions */}
+        {photo.width > 0 &&
           photo.faces.map((face, i) => (
             <div
               key={i}
               className="absolute border-2 border-green-400 rounded-sm pointer-events-none"
               style={{
-                left: `${(face.left / fullSize.w) * 100}%`,
-                top: `${(face.top / fullSize.h) * 100}%`,
-                width: `${((face.right - face.left) / fullSize.w) * 100}%`,
-                height: `${((face.bottom - face.top) / fullSize.h) * 100}%`,
+                left: `${(face.left / photo.width) * 100}%`,
+                top: `${(face.top / photo.height) * 100}%`,
+                width: `${((face.right - face.left) / photo.width) * 100}%`,
+                height: `${((face.bottom - face.top) / photo.height) * 100}%`,
               }}
             />
           ))}
