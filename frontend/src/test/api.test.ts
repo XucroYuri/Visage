@@ -147,16 +147,14 @@ describe("undo", () => {
 describe("save", () => {
   it("sends POST with output_dir", async () => {
     mockOk({ ok: true, stats: {} });
-    await save("/output");
+    await save({ output_dir: "/output" });
     const [, init] = mockFetch.mock.calls[0];
     expect(JSON.parse(init.body)).toEqual({ output_dir: "/output" });
   });
 
-  it("sends null output_dir by default", async () => {
+  it("sends empty body by default", async () => {
     mockOk({ ok: true, stats: {} });
     await save();
-    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({
-      output_dir: undefined,
-    });
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({});
   });
 });

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useMutation, useMutationState } from "@tanstack/react-query";
-import type { ClusterInfo, WorkspaceState } from "../api";
+import type { ClusterInfo, SaveSettings, WorkspaceState } from "../api";
 import {
   assignNoise,
   mergeClusters,
@@ -229,12 +229,12 @@ export function useSaveMutation() {
   const addToast = useToastStore((s) => s.addToast);
 
   return useMutation({
-    mutationFn: async (vars: { outputDir?: string; copyMode: boolean }) => {
-      return save(vars.outputDir);
+    mutationFn: async (settings: SaveSettings) => {
+      return save(settings);
     },
     onSuccess: (res, vars) => {
-      const action = vars.copyMode ? "copied" : "moved";
-      const count = res.stats[action] ?? 0;
+      const action = vars.copy_mode !== false ? "copied" : "moved";
+      const count = res.stats[action] ?? Object.values(res.stats).reduce((a, b) => a + b, 0);
       addToast({ type: "success", text: `${count} files ${action}` });
     },
     onError: (error: Error) => {

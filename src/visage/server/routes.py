@@ -252,12 +252,27 @@ def undo(request: Request):
 
 @router.post("/save")
 async def save(request: Request):
-    """Write organized files to disk."""
+    """Save organized photos to disk with optional output settings.
+
+    Body (all fields optional, null = use server defaults):
+        output_dir: str | None
+        copy_mode: bool | None
+        folder_prefix: str | None
+        include_unclustered: bool | None
+        include_no_faces: bool | None
+        cluster_ids: list[int] | None (null = all clusters)
+    """
     ws = _get_workspace(request)
     body = await request.json()
-    output_dir = body.get("output_dir")
     try:
-        stats = ws.save_to_disk(output_dir=output_dir)
+        stats = ws.save_to_disk(
+            output_dir=body.get("output_dir"),
+            copy_mode=body.get("copy_mode"),
+            folder_prefix=body.get("folder_prefix"),
+            include_unclustered=body.get("include_unclustered"),
+            include_no_faces=body.get("include_no_faces"),
+            cluster_ids=body.get("cluster_ids"),
+        )
         return {"ok": True, "stats": stats}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

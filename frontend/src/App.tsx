@@ -1,13 +1,16 @@
-import { Suspense, lazy, useCallback } from "react";
+import { Suspense, lazy, useCallback, useState } from "react";
 import { Routes, Route, useNavigate } from "react-router";
-import type { WorkspaceState } from "./api";
+import type { SaveSettings, WorkspaceState } from "./api";
 import { ApiError, fetchWorkspace } from "./api";
 import { Header } from "./components/Header";
 import { PhotoCard } from "./components/PhotoCard";
 import { PhotoGrid } from "./components/PhotoGrid";
+import { SaveDialog } from "./components/SaveDialog";
+import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
 import { ToastContainer } from "./components/Toast";
 import { useKeyboard } from "./hooks/useKeyboard";
+import { useSettingsStore } from "./store/settings";
 import { useToastStore } from "./store/toast";
 import { useUIStore } from "./store/ui";
 import {
@@ -77,6 +80,11 @@ export default function App() {
   const saveMutation = useSaveMutation();
   const isMutating = useIsMutating();
 
+  // UI state for overlay components
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+
+
   // ── Event handlers ─────────────────────────────────────────
 
   const handleExecuteMerge = useCallback(() => {
@@ -135,13 +143,36 @@ export default function App() {
     undoMutation.mutate();
   }, [undoMutation]);
 
+  const handleOpenSave = useCallback(() => {
+    setSaveDialogOpen(true);
+  }, []);
+
+  const handleOpenSettings = useCallback(() => {
+    setSettingsOpen(true);
+  }, []);
+
   const handleSave = useCallback(() => {
     setSaving(true);
-    const copyMode = useWorkspaceStore.getState().ws?.config.copy_mode ?? true;
-    saveMutation.mutate(
-      { copyMode },
-      { onSettled: () => setSaving(false) },
-    );
+    const store = useSettingsStore.getState();
+    const settings: SaveSettings = {
+      output_dir: store.outputDir || undefined,
+      copy_mode: store.copyMode,
+      folder_prefix: store.folderPrefix,
+      include_unclustered: store.includeUnclustered,
+      include_no_faces: store.includeNoFaces,
+    };
+    if (
+      store.clusterSelectionMode === "selected" &&
+      store.selectedClusterIds.size > 0
+    ) {
+      settings.cluster_ids = Array.from(store.selectedClusterIds);
+    }
+    saveMutation.mutate(settings, {
+      onSettled: () => {
+        setSaving(false);
+        setSaveDialogOpen(false);
+      },
+    });
   }, [saveMutation, setSaving]);
 
   const handleDropOnCluster = useCallback(
@@ -178,7 +209,7 @@ export default function App() {
 
   useKeyboard({
     onUndo: ws?.can_undo ? handleUndo : undefined,
-    onSave: handleSave,
+    onSave: saveDialogOpen ? undefined : handleOpenSave,
     onEscape: () => {
       if (editingName !== null) {
         handleCancelEdit();
@@ -257,7 +288,8 @@ export default function App() {
         mutating={isMutating}
         saveResult={null}
         onUndo={handleUndo}
-        onSave={handleSave}
+        onOpenSave={handleOpenSave}
+        onOpenSettings={handleOpenSettings}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -294,6 +326,28 @@ export default function App() {
       </div>
 
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      <SettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        inputDir={ws.input_dir}
+        embeddingBackend={ws.config.embedding_backend}
+        totalImages={ws.stats.total_images}
+        imagesWithFaces={ws.stats.images_with_faces}
+      />
+
+      <SaveDialog
+        open={saveDialogOpen}
+        onClose={() => setSaveDialogOpen(false)}
+        onSave={handleSave}
+        saving={saving}
+        clusters={ws.clusters.map((c) => ({
+          id: c.id,
+          name: c.name,
+          photoCount: c.photo_count,
+        }))}
+        defaultOutputDir={`${ws.input_dir}/visage_output`}
+      />
     </div>
   );
 }

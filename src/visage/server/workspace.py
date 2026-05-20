@@ -499,27 +499,65 @@ class Workspace:
 
     # ── Save ────────────────────────────────────────────────────
 
-    def save_to_disk(self, output_dir: str | None = None) -> dict:
+    def save_to_disk(
+        self,
+        output_dir: str | None = None,
+        copy_mode: bool | None = None,
+        folder_prefix: str | None = None,
+        include_unclustered: bool | None = None,
+        include_no_faces: bool | None = None,
+        cluster_ids: list[int] | None = None,
+    ) -> dict:
         """Write organized files to disk using the current cluster mapping.
 
-        Returns stats dict for display.
+        All optional parameters default to ``None``, which means the
+        corresponding :class:`VisageConfig` value is used.
+
+        Args:
+            output_dir: Target directory. Defaults to ``<input_dir>/Visage``.
+            copy_mode: ``True`` to copy files, ``False`` to move them.
+            folder_prefix: Prefix for cluster folder names.
+            include_unclustered: Export unclustered faces.
+            include_no_faces: Export images with no detected faces.
+            cluster_ids: If provided, export only the specified clusters
+                (the in-memory mapping is not modified).
+
+        Returns:
+            Stats dict for display.
         """
         out = output_dir or self.input_dir.rstrip("/") + "/" + DEFAULT_OUTPUT_DIRNAME
 
+        mapping = self._cluster_mapping
+        if cluster_ids is not None:
+            mapping = {
+                cid: paths
+                for cid, paths in self._cluster_mapping.items()
+                if cid in cluster_ids
+            }
+
+        fp = folder_prefix if folder_prefix is not None else self.config.folder_prefix
+        iu = (
+            include_unclustered
+            if include_unclustered is not None
+            else self.config.include_unclustered
+        )
+        inf = include_no_faces if include_no_faces is not None else self.config.include_no_faces
+        cm = copy_mode if copy_mode is not None else self.config.copy_mode
+
         plan = build_organize_plan(
             self._image_results,
-            self._cluster_mapping,
-            folder_prefix=self.config.folder_prefix,
-            include_unclustered=self.config.include_unclustered,
-            include_no_faces=self.config.include_no_faces,
+            mapping,
+            folder_prefix=fp,
+            include_unclustered=iu,
+            include_no_faces=inf,
             cluster_names=self._cluster_names or None,
         )
 
         stats = execute_organize_plan(
             plan,
             output_dir=out,
-            folder_prefix=self.config.folder_prefix,
-            copy_mode=self.config.copy_mode,
+            folder_prefix=fp,
+            copy_mode=cm,
             dry_run=False,
             cluster_names=self._cluster_names or None,
         )

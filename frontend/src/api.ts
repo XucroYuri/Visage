@@ -62,6 +62,15 @@ export interface UndoResult {
   workspace: WorkspaceState;
 }
 
+export interface SaveSettings {
+  output_dir?: string;
+  copy_mode?: boolean;
+  folder_prefix?: string;
+  include_unclustered?: boolean;
+  include_no_faces?: boolean;
+  cluster_ids?: number[];
+}
+
 export interface SaveResult {
   ok: boolean;
   stats: Record<string, number>;
@@ -151,10 +160,10 @@ export function undo(): Promise<UndoResult> {
   return request("/clusters/undo", { method: "POST" });
 }
 
-export function save(outputDir?: string): Promise<SaveResult> {
+export function save(settings?: SaveSettings): Promise<SaveResult> {
   return request("/save", {
     method: "POST",
-    body: JSON.stringify({ output_dir: outputDir }),
+    body: JSON.stringify(settings || {}),
   });
 }
 
