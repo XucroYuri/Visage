@@ -1,20 +1,37 @@
-import type { DragEvent } from "react";
-import { useAppContext } from "../context/AppContext";
+import { type DragEvent, useCallback } from "react";
+import { useNavigate, useLocation } from "react-router";
+import type { WorkspaceState } from "../api";
+import { useUIStore } from "../store/ui";
 import { ClusterRow } from "./ClusterRow";
 
-export function Sidebar() {
-  const ctx = useAppContext();
+interface SidebarContext {
+  ws: WorkspaceState;
+  mergeMode: boolean;
+  selectedForMerge: Set<number>;
+  editingName: number | null;
+  editValue: string;
+  isMutating: boolean;
+  handleToggleMergeMode: () => void;
+  handleMergeCancel: () => void;
+  handleExecuteMerge: () => void;
+  handleStartEdit: (id: number, name: string) => void;
+  handleRename: () => void;
+  handleCancelEdit: () => void;
+  handleDropOnCluster: (imagePath: string, clusterId: number) => void;
+  setEditValue: (v: string) => void;
+}
+
+export function Sidebar({ ctx }: { ctx: SidebarContext }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const {
     ws,
-    view,
     mergeMode,
     selectedForMerge,
     editingName,
     editValue,
-    mutating,
-    handleSelectCluster,
-    handleViewAll,
-    handleViewNoise,
+    isMutating: mutating,
     handleToggleMergeMode,
     handleMergeCancel,
     handleExecuteMerge,
@@ -30,16 +47,44 @@ export function Sidebar() {
   };
 
   const handleDropOnRow = (e: DragEvent, clusterId: number) => {
+    e.preventDefault();
     const imagePath = e.dataTransfer.getData("text/plain");
     if (imagePath) {
       handleDropOnCluster(imagePath, clusterId);
     }
   };
 
-  if (!ws) return null;
+  const handleSelectCluster = useCallback(
+    (id: number) => {
+      if (mergeMode) {
+        const prev = useUIStore.getState().selectedForMerge;
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        useUIStore.getState().setSelectedForMerge(next);
+      } else {
+        navigate(`/cluster/${id}`);
+      }
+    },
+    [mergeMode, navigate],
+  );
 
-  const activeClusterId =
-    typeof view === "object" && "clusterId" in view ? view.clusterId : null;
+  const handleViewAll = useCallback(() => {
+    useUIStore.getState().setMergeMode(false);
+    useUIStore.getState().setSelectedForMerge(new Set());
+    navigate("/");
+  }, [navigate]);
+
+  const handleViewNoise = useCallback(() => {
+    useUIStore.getState().setMergeMode(false);
+    useUIStore.getState().setSelectedForMerge(new Set());
+    navigate("/noise");
+  }, [navigate]);
+
+  const activeClusterId = (() => {
+    const match = location.pathname.match(/^\/cluster\/(\d+)$/);
+    return match ? parseInt(match[1], 10) : null;
+  })();
 
   return (
     <aside className="w-72 bg-gray-50 border-r border-gray-200 overflow-y-auto shrink-0 flex flex-col">
@@ -48,7 +93,7 @@ export function Sidebar() {
         <button
           onClick={handleViewAll}
           className={`w-full text-left px-3 py-2 rounded text-sm font-medium transition-colors ${
-            view === "all"
+            location.pathname === "/"
               ? "bg-blue-50 text-blue-700"
               : "hover:bg-gray-100 text-gray-700"
           }`}
@@ -59,7 +104,7 @@ export function Sidebar() {
         <button
           onClick={handleViewNoise}
           className={`w-full text-left px-3 py-2 rounded text-sm font-medium transition-colors ${
-            view === "noise"
+            location.pathname === "/noise"
               ? "bg-amber-50 text-amber-700"
               : "hover:bg-gray-100 text-gray-700"
           }`}
@@ -103,7 +148,7 @@ export function Sidebar() {
         )}
       </nav>
 
-      {/* Cluster list */}
+      {/* Cluster list with drop zone */}
       <div
         className="flex-1 divide-y divide-gray-100"
         onDragOver={handleDragOver}

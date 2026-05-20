@@ -1,9 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   ApiError,
+  assignNoise,
   fetchWorkspace,
   getImageUrl,
+  mergeClusters,
+  moveFace,
   pipelineStatusUrl,
+  removeFace,
+  renameCluster,
+  save,
+  undo,
 } from "../api";
 
 // ── fetch mock ────────────────────────────────────────────
@@ -14,6 +21,13 @@ vi.stubGlobal("fetch", mockFetch);
 beforeEach(() => {
   mockFetch.mockReset();
 });
+
+function mockOk(data: unknown) {
+  mockFetch.mockResolvedValueOnce({
+    ok: true,
+    json: () => Promise.resolve(data),
+  });
+}
 
 // ── Tests ─────────────────────────────────────────────────
 
@@ -48,10 +62,7 @@ describe("pipelineStatusUrl", () => {
 describe("fetchWorkspace", () => {
   it("returns workspace data on success", async () => {
     const mockWs = { clusters: [], noise_photos: [], all_photos: [] };
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve(mockWs),
-    });
+    mockOk(mockWs);
     const result = await fetchWorkspace();
     expect(result).toEqual(mockWs);
   });
@@ -63,5 +74,89 @@ describe("fetchWorkspace", () => {
       text: () => Promise.resolve("Server Error"),
     });
     await expect(fetchWorkspace()).rejects.toThrow(ApiError);
+  });
+});
+
+describe("mergeClusters", () => {
+  it("sends POST with correct body", async () => {
+    mockOk({ ok: true, workspace: {} });
+    await mergeClusters(1, 5);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/clusters/merge");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ from_id: 1, to_id: 5 });
+  });
+});
+
+describe("removeFace", () => {
+  it("sends POST to cluster remove endpoint", async () => {
+    mockOk({ ok: true, workspace: {} });
+    await removeFace(3, "/photos/img.jpg");
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/clusters/3/remove");
+    expect(JSON.parse(init.body)).toEqual({ image_path: "/photos/img.jpg" });
+  });
+});
+
+describe("moveFace", () => {
+  it("sends POST with from_id and to_id", async () => {
+    mockOk({ ok: true, workspace: {} });
+    await moveFace("/photos/img.jpg", 2, 4);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/clusters/move");
+    expect(JSON.parse(init.body)).toEqual({
+      image_path: "/photos/img.jpg",
+      from_id: 2,
+      to_id: 4,
+    });
+  });
+});
+
+describe("assignNoise", () => {
+  it("sends POST to assign endpoint", async () => {
+    mockOk({ ok: true, workspace: {} });
+    await assignNoise("/photos/img.jpg", 7);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/clusters/assign");
+    expect(JSON.parse(init.body)).toEqual({
+      image_path: "/photos/img.jpg",
+      to_id: 7,
+    });
+  });
+});
+
+describe("renameCluster", () => {
+  it("sends PUT with name", async () => {
+    mockOk({ ok: true, workspace: {} });
+    await renameCluster(3, "Vacation");
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/clusters/3");
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(init.body)).toEqual({ name: "Vacation" });
+  });
+});
+
+describe("undo", () => {
+  it("sends POST to undo endpoint", async () => {
+    mockOk({ ok: true, undo: {}, workspace: {} });
+    await undo();
+    expect(mockFetch.mock.calls[0][0]).toBe("/api/clusters/undo");
+  });
+});
+
+describe("save", () => {
+  it("sends POST with output_dir", async () => {
+    mockOk({ ok: true, stats: {} });
+    await save("/output");
+    const [, init] = mockFetch.mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual({ output_dir: "/output" });
+  });
+
+  it("sends null output_dir by default", async () => {
+    mockOk({ ok: true, stats: {} });
+    await save();
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({
+      output_dir: undefined,
+    });
   });
 });

@@ -27,29 +27,7 @@ export function PhotoViewer({
   const overlayRef = useRef<HTMLDivElement>(null);
   const filename = photo.path.split("/").pop() || photo.path;
 
-  // Keyboard: Escape = close, Arrow keys = prev/next
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
-      if (e.key === "ArrowLeft" && onPrev) {
-        e.preventDefault();
-        onPrev();
-        return;
-      }
-      if (e.key === "ArrowRight" && onNext) {
-        e.preventDefault();
-        onNext();
-        return;
-      }
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose, onPrev, onNext]);
-
-  // Focus trap: focus the overlay so keys work
+  // Focus trap: focus the overlay so onKeyDown works
   useEffect(() => {
     overlayRef.current?.focus();
   }, []);

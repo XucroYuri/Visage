@@ -1,22 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PhotoInfo } from "../api";
-import { useAppContext } from "../context/AppContext";
+import { useBatchAssignMutation, useMoveMutation, useWorkspaceStore } from "../store/workspace";
 import { PhotoCard } from "./PhotoCard";
 import { PhotoGrid } from "./PhotoGrid";
 import { PhotoViewer } from "./PhotoViewer";
 
 export function NoisePanel() {
-  const ctx = useAppContext();
-  const {
-    ws,
-    mutating,
-    handleMove,
-    batchAssign,
-  } = ctx;
+  const ws = useWorkspaceStore((s) => s.ws);
+  const moveMutation = useMoveMutation();
+  const batchAssignMutation = useBatchAssignMutation();
 
   if (!ws) return null;
 
-  const { noise_photos: noisePhotos, clusters, next_cluster_id: nextClusterId } = ws;
+  const noisePhotos = ws.noise_photos;
+  const clusters = ws.clusters;
+  const nextClusterId = ws.next_cluster_id;
+  const mutating = moveMutation.isPending || batchAssignMutation.isPending;
+
+  const handleAssign = (imagePath: string, toId: number) => {
+    moveMutation.mutate({ imagePath, fromId: -1, toId });
+  };
+
+  const handleBatchAssign = (imagePaths: string[], toId: number) => {
+    batchAssignMutation.mutate({ imagePaths, toId });
+  };
 
   return (
     <NoisePanelInner
@@ -24,13 +31,13 @@ export function NoisePanel() {
       clusters={clusters}
       nextClusterId={nextClusterId}
       mutating={mutating}
-      onAssign={(path, toId) => handleMove(path, -1, toId)}
-      onBatchAssign={batchAssign}
+      onAssign={handleAssign}
+      onBatchAssign={handleBatchAssign}
     />
   );
 }
 
-// ── Inner component (receives stable props from context) ──
+// ── Inner component (receives stable props) ────────────────────
 
 interface NoisePanelInnerProps {
   noisePhotos: PhotoInfo[];
@@ -74,20 +81,6 @@ function NoisePanelInner({
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showBatchMenu]);
-
-  // Ctrl+A handler
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "a") {
-        if (noisePhotos.length > 0) {
-          e.preventDefault();
-          setSelectedPaths(new Set(noisePhotos.map((p) => p.path)));
-        }
-      }
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [noisePhotos]);
 
   const toggleSelect = useCallback((path: string) => {
     setSelectedPaths((prev) => {

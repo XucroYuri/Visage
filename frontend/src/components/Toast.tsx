@@ -1,22 +1,18 @@
 import { useEffect, useState } from "react";
-import type { ToastMessage } from "../hooks/useWorkspace";
-
-interface ToastItem extends ToastMessage {
-  id: number;
-}
+import type { ToastItem, ToastType } from "../store/toast";
 
 interface ToastContainerProps {
   toasts: ToastItem[];
   onDismiss: (id: number) => void;
 }
 
-const COLORS: Record<ToastMessage["type"], string> = {
+const COLORS: Record<ToastType, string> = {
   success: "bg-green-600",
   error: "bg-red-600",
   info: "bg-blue-600",
 };
 
-const ICONS: Record<ToastMessage["type"], string> = {
+const ICONS: Record<ToastType, string> = {
   success: "\u2713",
   error: "\u2717",
   info: "\u2139",

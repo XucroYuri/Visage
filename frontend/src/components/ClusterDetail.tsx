@@ -1,30 +1,36 @@
 import { useState, useCallback, useMemo } from "react";
+import { useParams, useNavigate } from "react-router";
 import type { PhotoInfo } from "../api";
-import { useAppContext } from "../context/AppContext";
+import { useUIStore } from "../store/ui";
+import { useMoveMutation, useRemoveMutation, useRenameMutation, useWorkspaceStore } from "../store/workspace";
 import { PhotoCard } from "./PhotoCard";
 import { PhotoGrid } from "./PhotoGrid";
 import { PhotoViewer } from "./PhotoViewer";
 
 export function ClusterDetail() {
-  const ctx = useAppContext();
-  const {
-    ws,
-    selectedCluster,
-    editingName,
-    editValue,
-    setEditValue,
-    handleStartEdit,
-    handleCancelEdit,
-    handleRename,
-    handleRemove,
-    handleMove,
-    handleViewAll,
-  } = ctx;
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const clusterId = id ? parseInt(id, 10) : null;
+
+  const ws = useWorkspaceStore((s) => s.ws);
+  const editingName = useUIStore((s) => s.editingName);
+  const editValue = useUIStore((s) => s.editValue);
+  const setEditValue = useUIStore((s) => s.setEditValue);
+  const setEditingName = useUIStore((s) => s.setEditingName);
+
+  const removeMutation = useRemoveMutation();
+  const moveMutation = useMoveMutation();
+  const renameMutation = useRenameMutation();
 
   const [viewerPhoto, setViewerPhoto] = useState<PhotoInfo | null>(null);
 
-  const cluster = selectedCluster;
+  const cluster =
+    clusterId != null && ws
+      ? ws.clusters.find((c) => c.id === clusterId) ?? null
+      : null;
+
   const editing = editingName === cluster?.id;
+
   const otherClusters = useMemo(
     () => (ws && cluster ? ws.clusters.filter((c) => c.id !== cluster.id) : []),
     [ws, cluster],
@@ -46,6 +52,56 @@ export function ClusterDetail() {
       setViewerPhoto(cluster.photos[viewerIndex + 1]);
     }
   }, [viewerIndex, cluster]);
+
+  const handleRemove = useCallback(
+    async (clusterId: number, imagePath: string) => {
+      await removeMutation.mutateAsync({ clusterId, imagePath });
+      const updated = useWorkspaceStore.getState().ws;
+      if (updated && !updated.clusters.find((c) => c.id === clusterId)) {
+        navigate("/");
+      }
+    },
+    [removeMutation, navigate],
+  );
+
+  const handleMove = useCallback(
+    (imagePath: string, fromId: number, toId: number) => {
+      moveMutation.mutate({ imagePath, fromId, toId });
+    },
+    [moveMutation],
+  );
+
+  const handleStartEdit = useCallback(
+    (id: number, name: string) => {
+      setEditingName(id);
+      setEditValue(name);
+    },
+    [setEditingName, setEditValue],
+  );
+
+  const handleRename = useCallback(() => {
+    if (editingName === null || !editValue.trim()) {
+      setEditingName(null);
+      return;
+    }
+    const wsState = useWorkspaceStore.getState().ws;
+    const oldName =
+      wsState?.clusters.find((c) => c.id === editingName)?.name ?? `#${editingName}`;
+    const clusterCountBefore = wsState?.clusters.length ?? 0;
+    renameMutation.mutate({
+      clusterId: editingName,
+      name: editValue.trim(),
+      oldName,
+      clusterCountBefore,
+    } as Parameters<typeof renameMutation.mutate>[0]);
+    setEditingName(null);
+  }, [editingName, editValue, renameMutation, setEditingName]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingName(null);
+  }, [setEditingName]);
+
+  const handleViewAll = useCallback(() => navigate("/"), [navigate]);
 
   if (!cluster || !ws) return null;
 

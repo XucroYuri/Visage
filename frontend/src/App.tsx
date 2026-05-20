@@ -1,13 +1,26 @@
 import { Suspense, lazy, useCallback } from "react";
+import { Routes, Route, useNavigate } from "react-router";
+import type { WorkspaceState } from "./api";
+import { ApiError, fetchWorkspace } from "./api";
 import { Header } from "./components/Header";
 import { PhotoCard } from "./components/PhotoCard";
 import { PhotoGrid } from "./components/PhotoGrid";
 import { Sidebar } from "./components/Sidebar";
 import { ToastContainer } from "./components/Toast";
-import { AppProvider, useAppContext } from "./context/AppContext";
 import { useKeyboard } from "./hooks/useKeyboard";
+import { useToastStore } from "./store/toast";
+import { useUIStore } from "./store/ui";
+import {
+  useIsMutating,
+  useMergeMutation,
+  useMoveMutation,
+  useRenameMutation,
+  useSaveMutation,
+  useUndoMutation,
+  useWorkspaceStore,
+} from "./store/workspace";
 
-// ── Lazy-loaded view-level components ───────────────────
+// ── Lazy-loaded view-level components ──────────────────────────
 
 const ClusterDetail = lazy(() =>
   import("./components/ClusterDetail").then((m) => ({ default: m.ClusterDetail })),
@@ -19,7 +32,7 @@ const PipelineLoader = lazy(() =>
   import("./components/PipelineLoader").then((m) => ({ default: m.PipelineLoader })),
 );
 
-// ── Suspense fallback ────────────────────────────────────
+// ── Suspense fallback ──────────────────────────────────────────
 
 function ViewFallback() {
   return (
@@ -29,39 +42,140 @@ function ViewFallback() {
   );
 }
 
-// ── Inner app (rendered inside AppProvider to access context) ──
+// ── App ────────────────────────────────────────────────────────
 
-function AppInner() {
-  const ctx = useAppContext();
-  const {
-    ws,
-    loading,
-    error,
-    mutating,
-    load,
-    selectedCluster,
-    saving,
-    toasts,
-    dismissToast,
-    handleUndo,
-    handleSave,
-    handleCancelEdit,
-    handleMergeCancel,
-    view,
-    editingName,
-    mergeMode,
-  } = ctx;
+export default function App() {
+  const navigate = useNavigate();
 
-  // ── Pipeline mode handlers ──────────────────────────────
-  const handleWorkspaceReady = useCallback(() => {
-    load();
-  }, [load]);
+  // Workspace store
+  const ws = useWorkspaceStore((s) => s.ws);
+  const error = useWorkspaceStore((s) => s.error);
+  const setWs = useWorkspaceStore((s) => s.setWs);
+  const setError = useWorkspaceStore((s) => s.setError);
 
-  const handlePipelineError = useCallback(() => {
-    // useWorkspace handles errors from load()
-  }, []);
+  // UI store
+  const mergeMode = useUIStore((s) => s.mergeMode);
+  const setMergeMode = useUIStore((s) => s.setMergeMode);
+  const selectedForMerge = useUIStore((s) => s.selectedForMerge);
+  const setSelectedForMerge = useUIStore((s) => s.setSelectedForMerge);
+  const editingName = useUIStore((s) => s.editingName);
+  const setEditingName = useUIStore((s) => s.setEditingName);
+  const editValue = useUIStore((s) => s.editValue);
+  const setEditValue = useUIStore((s) => s.setEditValue);
+  const saving = useUIStore((s) => s.saving);
+  const setSaving = useUIStore((s) => s.setSaving);
 
-  // ── Keyboard shortcuts ──────────────────────────────────
+  // Toast store
+  const toasts = useToastStore((s) => s.toasts);
+  const dismissToast = useToastStore((s) => s.dismissToast);
+
+  // Mutations
+  const mergeMutation = useMergeMutation();
+  const moveMutation = useMoveMutation();
+  const renameMutation = useRenameMutation();
+  const undoMutation = useUndoMutation();
+  const saveMutation = useSaveMutation();
+  const isMutating = useIsMutating();
+
+  // ── Event handlers ─────────────────────────────────────────
+
+  const handleExecuteMerge = useCallback(() => {
+    const ids = Array.from(selectedForMerge);
+    if (ids.length < 2) return;
+    const toId = ids[0];
+    const fromIds = ids.slice(1);
+    mergeMutation.mutate({ fromIds, toId });
+    setSelectedForMerge(new Set());
+    setMergeMode(false);
+    navigate(`/cluster/${toId}`);
+  }, [selectedForMerge, mergeMutation, setSelectedForMerge, setMergeMode, navigate]);
+
+  const handleRename = useCallback(() => {
+    if (editingName === null || !editValue.trim()) {
+      setEditingName(null);
+      return;
+    }
+    const wsState = useWorkspaceStore.getState().ws;
+    const oldName =
+      wsState?.clusters.find((c) => c.id === editingName)?.name ?? `#${editingName}`;
+    const clusterCountBefore = wsState?.clusters.length ?? 0;
+    renameMutation.mutate({
+      clusterId: editingName,
+      name: editValue.trim(),
+      oldName,
+      clusterCountBefore,
+    } as { clusterId: number; name: string; oldName: string; clusterCountBefore: number });
+    setEditingName(null);
+  }, [editingName, editValue, renameMutation, setEditingName]);
+
+  const handleStartEdit = useCallback(
+    (id: number, name: string) => {
+      setEditingName(id);
+      setEditValue(name);
+    },
+    [setEditingName, setEditValue],
+  );
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingName(null);
+  }, [setEditingName]);
+
+  const handleMergeCancel = useCallback(() => {
+    setMergeMode(false);
+    setSelectedForMerge(new Set());
+  }, [setMergeMode, setSelectedForMerge]);
+
+  const handleToggleMergeMode = useCallback(() => {
+    setMergeMode(true);
+    setSelectedForMerge(new Set());
+    navigate("/");
+  }, [setMergeMode, setSelectedForMerge, navigate]);
+
+  const handleUndo = useCallback(() => {
+    undoMutation.mutate();
+  }, [undoMutation]);
+
+  const handleSave = useCallback(() => {
+    setSaving(true);
+    const copyMode = useWorkspaceStore.getState().ws?.config.copy_mode ?? true;
+    saveMutation.mutate(
+      { copyMode },
+      { onSettled: () => setSaving(false) },
+    );
+  }, [saveMutation, setSaving]);
+
+  const handleDropOnCluster = useCallback(
+    (imagePath: string, clusterId: number) => {
+      moveMutation.mutate({ imagePath, fromId: -1, toId: clusterId });
+    },
+    [moveMutation],
+  );
+
+  // ── Pipeline mode handlers ──────────────────────────────────
+
+  const handleWorkspaceReady = useCallback(
+    (loaded: WorkspaceState) => {
+      setWs(loaded);
+    },
+    [setWs],
+  );
+
+  const handlePipelineError = useCallback(
+    (msg: string) => {
+      // Retry: if it fails with non-503, set error
+      fetchWorkspace()
+        .then(setWs)
+        .catch((e) => {
+          if (e instanceof ApiError && e.statusCode === 503) return; // pipeline still running
+          setError(String(e));
+        });
+      console.error("Pipeline error:", msg);
+    },
+    [setWs, setError],
+  );
+
+  // ── Keyboard shortcuts ──────────────────────────────────────
+
   useKeyboard({
     onUndo: ws?.can_undo ? handleUndo : undefined,
     onSave: handleSave,
@@ -74,8 +188,9 @@ function AppInner() {
     },
   });
 
-  // ── Loading / Error states ──────────────────────────────
-  if (loading && !ws && !error) {
+  // ── Loading / Error states ──────────────────────────────────
+
+  if (!ws && !error) {
     return (
       <Suspense fallback={<ViewFallback />}>
         <PipelineLoader
@@ -95,7 +210,12 @@ function AppInner() {
           </p>
           <p className="text-sm text-gray-500 mb-4">{error}</p>
           <button
-            onClick={load}
+            onClick={() => {
+              setError(null);
+              fetchWorkspace()
+                .then(setWs)
+                .catch((e) => setError(String(e)));
+            }}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
           >
             Retry
@@ -107,65 +227,73 @@ function AppInner() {
 
   if (!ws) return null;
 
+  // ── Context bag passed to Sidebar ──
+
+  const sidebarCtx = {
+    ws,
+    mergeMode,
+    selectedForMerge,
+    editingName,
+    editValue,
+    isMutating,
+    handleToggleMergeMode,
+    handleMergeCancel,
+    handleExecuteMerge,
+    handleStartEdit,
+    handleRename,
+    handleCancelEdit,
+    handleDropOnCluster,
+    setEditValue,
+  };
+
+  // ── Main UI ───────────────────────────────────────────────
+
   return (
     <div className="flex flex-col h-screen">
-      {/* Header */}
       <Header
         stats={ws.stats}
         canUndo={ws.can_undo}
         saving={saving}
-        mutating={mutating}
+        mutating={isMutating}
         saveResult={null}
         onUndo={handleUndo}
         onSave={handleSave}
       />
 
-      {/* Body */}
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
+        <Sidebar ctx={sidebarCtx} />
 
-        {/* Main content */}
         <main className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
-          {selectedCluster ? (
-            <Suspense fallback={<ViewFallback />}>
-              <ClusterDetail />
-            </Suspense>
-          ) : view === "noise" ? (
-            <Suspense fallback={<ViewFallback />}>
-              <NoisePanel />
-            </Suspense>
-          ) : (
-            <div>
-              <h2 className="text-lg font-semibold text-gray-700 mb-4">
-                All Photos ({ws.all_photos.length})
-              </h2>
-              <PhotoGrid
-                totalCount={ws.all_photos.length}
-                emptyMessage="No photos"
-              >
-                {ws.all_photos.map((photo) => (
-                  <div key={photo.path}>
-                    <PhotoCard photo={photo} />
+          <Suspense fallback={<ViewFallback />}>
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-700 mb-4">
+                      All Photos ({ws.all_photos.length})
+                    </h2>
+                    <PhotoGrid
+                      totalCount={ws.all_photos.length}
+                      emptyMessage="No photos"
+                    >
+                      {ws.all_photos.map((photo) => (
+                        <div key={photo.path}>
+                          <PhotoCard photo={photo} />
+                        </div>
+                      ))}
+                    </PhotoGrid>
                   </div>
-                ))}
-              </PhotoGrid>
-            </div>
-          )}
+                }
+              />
+              <Route path="/cluster/:id" element={<ClusterDetail />} />
+              <Route path="/noise" element={<NoisePanel />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
 
-      {/* Toast notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
-  );
-}
-
-// ── Root app ─────────────────────────────────────────────
-
-export default function App() {
-  return (
-    <AppProvider>
-      <AppInner />
-    </AppProvider>
   );
 }
