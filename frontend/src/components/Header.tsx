@@ -26,11 +26,20 @@ export function Header({
       <div className="flex items-center gap-4">
         <h1 className="text-lg font-semibold text-gray-900">Visage Review</h1>
         {stats && (
-          <span className="text-sm text-gray-400">
-            {stats.num_clusters} clusters &middot;{" "}
-            {stats.images_with_faces} images &middot;{" "}
-            {stats.num_noise_faces} noise
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium">
+              <span className="w-2 h-2 rounded-full bg-indigo-400" />
+              {stats.num_clusters} clusters
+            </span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-xs font-medium">
+              <span className="w-2 h-2 rounded-full bg-green-400" />
+              {stats.images_with_faces} images
+            </span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full text-xs font-medium">
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              {stats.num_noise_faces} noise
+            </span>
+          </div>
         )}
       </div>
 
@@ -72,6 +81,9 @@ export function Header({
           className="px-3 py-1.5 text-sm border rounded disabled:opacity-30 hover:bg-gray-50 transition-colors"
           title="Undo (Ctrl+Z)"
         >
+          <kbd className="hidden sm:inline-flex items-center px-1 py-0.5 mr-1 text-[10px] font-mono bg-gray-200/70 rounded">
+            Ctrl+Z
+          </kbd>
           &#8630; Undo
         </button>
         <button
@@ -82,6 +94,9 @@ export function Header({
           {saving && (
             <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
           )}
+          <kbd className="hidden sm:inline-flex items-center px-1 py-0.5 mr-1 text-[10px] font-mono bg-blue-500/40 rounded">
+            Ctrl+S
+          </kbd>
           {saving ? "Saving..." : "Save to Disk"}
         </button>
       </div>

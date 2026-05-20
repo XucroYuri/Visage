@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { Routes, Route, useNavigate } from "react-router";
 import type { SaveSettings, WorkspaceState } from "./api";
 import { ApiError, fetchWorkspace } from "./api";
@@ -83,6 +83,7 @@ export default function App() {
   // UI state for overlay components
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [saveResult, setSaveResult] = useState<string | null>(null);
 
 
   // ── Event handlers ─────────────────────────────────────────
@@ -168,12 +169,26 @@ export default function App() {
       settings.cluster_ids = Array.from(store.selectedClusterIds);
     }
     saveMutation.mutate(settings, {
+      onSuccess: (res, vars) => {
+        const action = vars.copy_mode !== false ? "copied" : "moved";
+        const count =
+          res.stats[action] ??
+          Object.values(res.stats).reduce((a, b) => a + b, 0);
+        setSaveResult(`${count} files ${action}`);
+      },
       onSettled: () => {
         setSaving(false);
         setSaveDialogOpen(false);
       },
     });
   }, [saveMutation, setSaving]);
+
+  // Auto-clear save result after 6 seconds
+  useEffect(() => {
+    if (!saveResult) return;
+    const timer = setTimeout(() => setSaveResult(null), 6000);
+    return () => clearTimeout(timer);
+  }, [saveResult]);
 
   const handleDropOnCluster = useCallback(
     (imagePath: string, clusterId: number) => {
@@ -286,7 +301,7 @@ export default function App() {
         canUndo={ws.can_undo}
         saving={saving}
         mutating={isMutating}
-        saveResult={null}
+        saveResult={saveResult}
         onUndo={handleUndo}
         onOpenSave={handleOpenSave}
         onOpenSettings={handleOpenSettings}

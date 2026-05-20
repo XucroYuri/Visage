@@ -175,15 +175,34 @@ function InputTab({
   totalImages: number;
   imagesWithFaces: number;
 }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyPath = useCallback(() => {
+    navigator.clipboard.writeText(inputDir).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [inputDir]);
+
+  const detRate = totalImages > 0 ? Math.round((imagesWithFaces / totalImages) * 100) : 0;
+
   return (
     <div className="space-y-5">
       <Field label="Input Directory">
-        <p
-          className="text-sm text-gray-600 font-mono truncate bg-gray-50 rounded px-2.5 py-1.5 border border-gray-200"
-          title={inputDir}
+        <button
+          onClick={handleCopyPath}
+          className="w-full text-left text-sm text-gray-600 font-mono truncate bg-gray-50 rounded px-2.5 py-1.5 border border-gray-200 hover:border-blue-300 hover:bg-blue-50/30 transition-colors group relative"
+          title="Click to copy path"
         >
           {inputDir}
-        </p>
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-sans font-medium text-gray-400 group-hover:text-gray-600 transition-colors">
+            {copied ? (
+              <span className="text-green-600">Copied!</span>
+            ) : (
+              "Copy"
+            )}
+          </span>
+        </button>
       </Field>
 
       <Field label="Embedding Backend">
@@ -191,9 +210,25 @@ function InputTab({
       </Field>
 
       <Field label="Statistics">
-        <div className="space-y-1.5">
+        <div className="space-y-3">
           <StatRow label="Total images scanned" value={totalImages} />
           <StatRow label="Images with faces" value={imagesWithFaces} />
+          <StatRow label="No face found" value={totalImages - imagesWithFaces} />
+          <div>
+            <div className="flex items-center justify-between text-xs mb-1.5">
+              <span className="text-gray-500">Face detection rate</span>
+              <span className="font-semibold text-gray-800 tabular-nums">{detRate}%</span>
+            </div>
+            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-700 ease-out"
+                style={{
+                  width: `${detRate}%`,
+                  backgroundColor: detRate > 80 ? "#22c55e" : detRate > 50 ? "#eab308" : "#ef4444",
+                }}
+              />
+            </div>
+          </div>
         </div>
       </Field>
     </div>
@@ -214,17 +249,29 @@ function OutputTab() {
   const includeNoFaces = useSettingsStore((s) => s.includeNoFaces);
   const setIncludeNoFaces = useSettingsStore((s) => s.setIncludeNoFaces);
 
+  const handleResetDefaults = useCallback(() => {
+    setOutputDir("");
+    setFolderPrefix("person_");
+    setCopyMode(true);
+    setIncludeUnclustered(false);
+    setIncludeNoFaces(false);
+  }, [setOutputDir, setFolderPrefix, setCopyMode, setIncludeUnclustered, setIncludeNoFaces]);
+
+  const effectiveDir = outputDir || "input_dir/visage_output";
+
   return (
     <div className="space-y-5">
       {/* Output Directory */}
       <Field label="Output Directory">
-        <input
-          type="text"
-          value={outputDir}
-          onChange={(e) => setOutputDir(e.target.value)}
-          placeholder="Default: input_dir/visage_output"
-          className="w-full text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded px-2.5 py-1.5 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-shadow"
-        />
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={outputDir}
+            onChange={(e) => setOutputDir(e.target.value)}
+            placeholder="Default: input_dir/visage_output"
+            className="flex-1 min-w-0 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded px-2.5 py-1.5 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-shadow"
+          />
+        </div>
       </Field>
 
       {/* Folder Prefix */}
@@ -274,6 +321,29 @@ function OutputTab() {
             id="include-nofaces"
           />
         </Field>
+      </div>
+
+      {/* ── Folder preview ───────────────────────────────────── */}
+      <Field label="Expected Folder Structure">
+        <div className="bg-gray-50 border border-gray-200 rounded p-2.5 text-xs font-mono text-gray-600 leading-relaxed">
+          <div className="text-gray-700">{effectiveDir}/</div>
+          {includeUnclustered && <div className="pl-3 text-gray-500">_unclustered/</div>}
+          {includeNoFaces && <div className="pl-3 text-gray-500">_no_faces/</div>}
+          <div className="pl-3 text-gray-500">{folderPrefix || "person_"}1/</div>
+          <div className="pl-6 text-gray-400">photo_001.jpg</div>
+          <div className="pl-6 text-gray-400">&hellip;</div>
+        </div>
+      </Field>
+
+      {/* ── Reset ─────────────────────────────────────────────── */}
+      <div className="pt-1 border-t border-gray-100">
+        <button
+          type="button"
+          onClick={handleResetDefaults}
+          className="text-xs text-gray-400 hover:text-gray-600 hover:text-red-600 transition-colors"
+        >
+          Reset output settings to defaults
+        </button>
       </div>
     </div>
   );

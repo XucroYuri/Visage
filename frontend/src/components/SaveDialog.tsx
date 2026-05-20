@@ -118,6 +118,7 @@ export function SaveDialog({
 
         {/* ── Form body (scrollable) ────────────────────────── */}
         <form
+          id="save-form"
           onSubmit={handleSubmit}
           className="flex-1 overflow-y-auto px-6 py-5 space-y-5"
         >
@@ -257,7 +258,36 @@ export function SaveDialog({
             </label>
           </fieldset>
 
-          {/* ── 5. Cluster Selection ────────────────────────── */}
+          {/* ── 5. Save Summary ────────────────────────────── */}
+          <fieldset className="space-y-1.5">
+            <legend className="text-sm font-medium text-gray-700">
+              Save Summary
+            </legend>
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-800 space-y-1.5">
+              <div className="flex justify-between">
+                <span>Clusters to save</span>
+                <span className="font-semibold tabular-nums">
+                  {clusterSelectionMode === "selected"
+                    ? selectedClusterIds.size
+                    : clusters.length}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Copy mode</span>
+                <span className="font-semibold">
+                  {copyMode ? "Copy (safe)" : "Move"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Output folder</span>
+                <span className="font-semibold truncate max-w-[200px] text-right" title={outputDir || defaultOutputDir}>
+                  {outputDir || defaultOutputDir}
+                </span>
+              </div>
+            </div>
+          </fieldset>
+
+          {/* ── 6. Cluster Selection ────────────────────────── */}
           <fieldset className="space-y-3">
             <legend className="text-sm font-medium text-gray-700 mb-1">
               Cluster Selection
@@ -357,6 +387,9 @@ export function SaveDialog({
 
         {/* ── Footer ────────────────────────────────────────── */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 shrink-0">
+          <span className="mr-auto text-xs text-gray-400">
+            <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">Enter</kbd> to save
+          </span>
           <button
             type="button"
             onClick={onClose}
@@ -367,10 +400,8 @@ export function SaveDialog({
             Cancel
           </button>
           <button
-            type="button"
-            onClick={() => {
-              if (!saving) onSave();
-            }}
+            type="submit"
+            form="save-form"
             disabled={
               saving ||
               (clusterSelectionMode === "selected" &&
