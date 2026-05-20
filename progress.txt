@@ -1,0 +1,22 @@
+# Visage — Ralph Autonomous Session Progress
+
+Started: 2026-05-21
+Goal: Zero-defect code quality audit + comprehensive documentation rewrite + staged GitHub push
+
+## Current Status
+
+| Story | Status |
+|-------|--------|
+| US-001: Code Quality Audit — Python Backend | PENDING |
+| US-002: Code Quality Audit — Frontend TypeScript | PENDING |
+| US-003: Documentation Rewrite — Overview & Architecture | PENDING |
+| US-004: Comprehensive Developer & Agent Reference Docs | PENDING |
+| US-005: Stage-by-Stage GitHub Push | PENDING |
+
+## Learnings
+
+- All 364 Python tests pass; 11 frontend tests pass
+- numpy types need explicit int()/float()/bool() casting for API JSON serialization
+- Workspace uses undo stack pattern with face-level snapshots
+- Frontend uses Zustand stores + React Router + TanStack Query (via custom hooks)
+- Ruff lint is configured with line-length=100, target py310

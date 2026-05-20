@@ -1,222 +1,175 @@
-# Visage
+# Visage 👤
 
-macOS-native face clustering and photo sorting CLI. Scan a folder of photos, detect faces, group them by person, and organize into per-person subfolders. Includes an interactive web UI for manual review and correction.
+> macOS-native face clustering and photo sorter — scan photos, detect faces, group by person, organize into folders.
 
-## Features
-
-- Hardware-accelerated face detection via macOS Vision framework
-- Pluggable embedding backends: dlib (128-dim) and InsightFace/ArcFace (512-dim, optional)
-- DBSCAN and HDBSCAN clustering with automatic eps estimation (`--auto-eps`)
-- Face quality assessment -- Laplacian blur detection + size ratio filtering
-- Per-cluster confidence scores (cosine similarity to centroid)
-- **Interactive web UI** -- visual review, merge/split/rename clusters, face overlay
-- SQLite embedding cache -- incremental processing on re-runs
-- Checkpoint/resume for interrupted runs
-- Rich terminal progress bars with plain-text fallback
-- HEIC/HEIF image support (pillow-heif with macOS sips fallback)
-- Copy-by-default (non-destructive), with `--move` option
-- Dry-run mode to preview results before modifying files
-- JSON output mode for scripting and automation
-- Multi-face photos appear in every matching person folder
-
-## How It Works
-
-Visage runs a 5-phase pipeline:
-
-```
-Input folder
-    |
-    v
-[1] Scan -- find all supported images recursively
-    |
-    v
-[2] Detect -- macOS Vision finds faces (fast, hardware-accelerated)
-    |
-    v
-[3] Embed -- pluggable backend generates identity vectors
-    |         (dlib 128-dim or InsightFace 512-dim; cached in SQLite)
-    |
-    v
-[4] Cluster -- DBSCAN or HDBSCAN groups faces by person identity
-    |
-    v
-[5] Organize -- copy/move photos into person_00/, person_01/, ...
+```mermaid
+graph LR
+    A[📁 照片文件夹] --> B[🔍 扫描图片]
+    B --> C[👤 人脸检测<br/>Vision 框架]
+    C --> D[🧬 特征嵌入<br/>dlib / InsightFace]
+    D --> E[🔗 聚类分组<br/>HDBSCAN / DBSCAN]
+    E --> F[📂 按人分类]
+    E -.-> G[🖥️ Web UI 审查<br/>→ 合并 / 重命名 / 导出]
 ```
 
-Phase details:
+Visage 是一个命令行工具，自动扫描照片、识别人脸、按人分组。支持批量模式（直接输出）和交互模式（Web 界面手动核验）。
 
-1. **Scan** -- Walks the input directory for supported image files (`.jpg`, `.jpeg`, `.png`, `.heic`, `.heif`, `.tif`, `.tiff`). Skips hidden directories, `visage_output`, and `.visage_cache`.
+---
 
-2. **Detect** -- Detects faces in each image using the macOS Vision framework (`VNDetectFaceRectanglesRequest`). Runs in parallel with configurable worker count. Filters by confidence threshold and minimum face size.
+## 快速开始 Quick Start
 
-3. **Embed** -- Generates identity embeddings for each detected face using a pluggable backend. The default dlib backend produces 128-dimensional vectors; the optional InsightFace/ArcFace backend produces 512-dimensional vectors for higher accuracy. Results are cached in a SQLite database keyed by file path and mtime fingerprint, so unchanged images skip re-computation on subsequent runs.
-
-4. **Cluster** -- L2-normalizes all embeddings, then clusters them with DBSCAN or HDBSCAN. DBSCAN supports a fixed epsilon threshold or automatic estimation via the k-distance elbow method. HDBSCAN requires no eps parameter and handles clusters of varying density. Faces that do not fit any cluster are labeled as noise.
-
-5. **Organize** -- Copies (or moves) photos into per-person subfolders under the output directory. A photo containing multiple people appears in each matching folder. Optionally includes `_unclustered` and `_no_faces` folders.
-
-## Requirements
-
-- macOS 13+ (Ventura or later)
-- Python 3.10+
-- cmake (required to build dlib, which face_recognition depends on)
-
-Install cmake via Homebrew:
+### 安装
 
 ```bash
-brew install cmake
-```
-
-## Installation
-
-```bash
+# 克隆仓库
 git clone https://github.com/user/Visage.git
 cd Visage
+
+# 安装依赖 (推荐 uv)
+brew install cmake                  # dlib 构建需要
 uv sync --extra dev --extra insightface --extra web
+
+# 或者用 pip
+pip install -e ".[dev,insightface,web]"
 ```
 
-This installs the `visage` command-line tool with all optional dependencies. Use `pip install -e ".[dev,insightface,web]"` if you prefer pip.
-
-## Quick Start
-
-Sort a folder of photos by person:
+### 一键整理照片
 
 ```bash
-visage ~/Photos/Vacation
+visage ~/照片/旅行
 ```
 
-Results are placed in `~/Photos/Vacation/visage_output/` with subfolders `person_00/`, `person_01/`, and so on.
+结果放在 `~/照片/旅行/visage_output/`，按人分文件夹：
 
-Preview results without modifying any files:
+```
+visage_output/
+├── person_00/   ← 第一个人 (所有他的照片)
+├── person_01/   ← 第二个人
+├── person_02/   ← 第三个人
+└── ...
+```
+
+### 使用 Web UI 手动审查
 
 ```bash
-visage ~/Photos/Vacation --dry-run
+visage ~/照片/旅行 --serve --backend insightface
 ```
 
-Get machine-readable output:
+浏览器自动打开 `http://localhost:8787`，可以进行：
+- 浏览所有聚类分组
+- 合并多个分组（同人不同组）
+- 删除误检照片
+- 重命名分组
+- 调整聚类参数后重新聚类
+- 导出整理结果到磁盘
+
+## 工作流程 Workflow
+
+```mermaid
+flowchart TB
+    subgraph Input["准备"]
+        I[照片文件夹]
+    end
+
+    subgraph Batch["批量模式 (默认)"]
+        S[扫描图片 jpg/png/heic]
+        D[人脸检测 Vision 框架]
+        E[特征提取 128/512维]
+        C[聚类 HDBSCAN]
+        O[按人复制到文件夹]
+    end
+
+    subgraph Review["审查模式 (--serve)"]
+        W[Web UI localhost:8787]
+        M[合并/拆分/重命名]
+        R[调整参数后重新聚类]
+        S2[导出到磁盘]
+    end
+
+    I --> Batch
+    Batch -->|不满意结果| Review
+    Review -->|确认后| S2
+
+    Batch -->|一次性搞定| Done[(📁 按人组织的照片)]
+    S2 --> Done
+```
+
+## 功能亮点 Features
+
+| 功能 | 说明 |
+|------|------|
+| **⚡ 硬件加速检测** | 使用 macOS Vision 框架，调用 Apple Neural Engine |
+| **🧬 双嵌入后端** | dlib (默认) 或 InsightFace (更高精度) |
+| **🔗 双聚类算法** | HDBSCAN (自适应密度) 或 DBSCAN (固定阈值) |
+| **🖥️ Web 审查界面** | 合并/移动/删除/重命名/重新聚类，全部可视化 |
+| **⏪ 可撤销操作** | 所有修改支持撤销 (历史栈) |
+| **💾 嵌入缓存** | SQLite 缓存，重复运行无需重新计算 |
+| **📷 HEIC 支持** | iPhone 照片原生支持 |
+| **🔒 安全复制** | 默认复制不修改原文件，可选移动 |
+| **🔄 检查点恢复** | 中断后可续跑 |
+
+## 使用场景 Use Cases
+
+### 按人整理家庭相册
 
 ```bash
-visage ~/Photos/Vacation --json
+visage ~/照片/2024年 --include-unclustered
 ```
 
-Move files instead of copying:
+### 高精度模式 (InsightFace + 大模型 + 多次采样)
 
 ```bash
-visage ~/Photos/Vacation --move
+visage ~/照片/相册 --serve --backend insightface --model large --num-jitters 10
 ```
 
-Let Visage estimate the best clustering threshold automatically:
+### 只预览不修改
 
 ```bash
-visage ~/Photos/Vacation --auto-eps
+visage ~/照片/测试 --dry-run --json
 ```
 
-## Web UI (Review Mode)
-
-Launch an interactive web interface to visually review and correct clustering results:
+### 配置自动估计聚类参数
 
 ```bash
-visage ~/Photos/Vacation --serve --backend insightface
+visage ~/照片/相册 --auto-eps
 ```
 
-This opens a browser at `http://localhost:8787` with:
+### 自定义输出前缀
 
-- **Cluster sidebar** -- browse all detected person clusters with thumbnails and confidence scores
-- **Face overlay** -- green bounding boxes show which face was detected in each photo
-- **Merge** -- combine clusters that belong to the same person (merge mode or drag)
-- **Move** -- reassign individual photos between clusters via dropdown menu
-- **Remove** -- remove misidentified photos from a cluster (becomes unclustered)
-- **Rename** -- click any cluster name to assign a person name
-- **Undo** -- all operations are reversible with undo stack
-- **Unclustered panel** -- review noise faces and assign them to clusters
-- **Save to Disk** -- write the final organized folder structure
-
-Pipeline progress is streamed live via Server-Sent Events with a 5-phase progress bar.
-
-Web UI dependencies (`fastapi`, `uvicorn`) are installed with the `[web]` extra.
-
-## CLI Reference
-
-```
-visage INPUT [OPTIONS]
+```bash
+visage ~/照片/相册 --output-dir ~/整理后 --folder-prefix "朋友_"
 ```
 
-### Positional Arguments
+## CLI 命令参考
 
-| Argument | Description |
-|----------|-------------|
-| `INPUT` | Input folder containing photos |
+### 基本用法
 
-### Output
+```bash
+visage <输入目录> [选项]
+```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `-o`, `--output-dir` | `<input>/visage_output` | Output directory for sorted photos |
-| `--move` | copy | Move files instead of copying |
-| `--dry-run` | off | Show organization plan without modifying files |
+### 常见选项速查
 
-### Detection
+| 用途 | 选项 |
+|------|------|
+| 启动 Web 界面 | `--serve` |
+| 指定端口 | `--port 8080` |
+| 使用 InsightFace | `--backend insightface` |
+| 使用大模型 | `--model large` |
+| 调整聚类精度 | `--eps 0.6` |
+| 包含未聚类照片 | `--include-unclustered` |
+| 仅预览 | `--dry-run` |
+| 移动而非复制 | `--move` |
+| 输出 JSON | `--json` |
+| 使用配置文件 | `--config my.toml` |
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--min-confidence` | `0.5` | Minimum face detection confidence (0--1) |
-| `--max-workers` | `4` | Max parallel detection workers |
+完整选项 → [CLI Reference](docs/reference.md)
 
-### Embedding
+## 配置文件 Config File
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--backend` | `dlib` | Embedding backend: `dlib` (128-dim) or `insightface` (512-dim) |
-| `--model` | `small` | Face embedding model: `small` (fast) or `large` (accurate, dlib only) |
-| `--num-jitters` | `1` | Number of re-samples for embedding generation (dlib only) |
+支持 TOML 格式配置文件 (自动发现输入目录下的 `visage.toml` 或通过 `--config` 指定)。
 
-### Quality
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--min-quality` | `0` | Minimum face quality score 0--1 (0 = no filtering) |
-
-### Clustering
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--cluster-method` | `hdbscan` | Clustering algorithm: `dbscan` or `hdbscan` |
-| `--eps` | `0.5` | DBSCAN epsilon (max distance between embeddings in a cluster, DBSCAN only) |
-| `--min-samples` | `3` | Minimum samples per cluster |
-| `--auto-eps` | off | Automatically estimate eps using k-distance elbow method (DBSCAN only) |
-
-### Include
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--include-unclustered` | off | Include `_unclustered/` folder for unmatched faces |
-| `--include-no-faces` | off | Include `_no_faces/` folder for images without faces |
-
-### Display
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--json` | off | Output results as JSON |
-| `-q`, `--quiet` | off | Suppress progress output |
-| `-v`, `--verbose` | off | Show detailed log output (warnings and debug info) |
-| `--config` | none | Path to TOML config file |
-| `--version` | | Print version and exit |
-
-### Serve (Web UI)
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--serve` | off | Start web review UI instead of batch processing |
-| `--port` | `8787` | Port for the review web server |
-| `--no-open` | off | Don't auto-open browser |
-
-## Configuration
-
-Visage reads settings from a TOML config file. Place a `visage.toml` in your input directory, or pass one explicitly with `--config path/to/config.toml`.
-
-Priority order: CLI flags > `--config` file > `visage.toml` in input directory > defaults.
-
-Example `visage.toml`:
+优先级：CLI 参数 > `--config` 文件 > 输入目录 `visage.toml` > 硬件推荐 > 代码默认值
 
 ```toml
 [detection]
@@ -224,43 +177,77 @@ confidence = 0.6
 min_face_size = 50
 
 [embedding]
+backend = "insightface"
 model = "large"
 num_jitters = 2
 
 [clustering]
-eps = 0.45
+method = "hdbscan"
 min_samples = 3
-
-[output]
-copy_mode = true
-folder_prefix = "person_"
-include_unclustered = false
-include_no_faces = false
+merge_threshold = 0.80
 ```
 
-## Tuning Tips
+完整配置 → [Configuration Guide](docs/configuration.md)
 
-- **Too many clusters** (same person split): increase `--eps` (e.g., 0.6)
-- **Too few clusters** (different people merged): decrease `--eps` (e.g., 0.3)
-- **Missing faces**: lower `--min-confidence` (e.g., 0.3)
-- **Better accuracy**: use `--model large --num-jitters 10` (slower)
-- **Unsure about eps**: use `--auto-eps` to estimate automatically
-- **Varying cluster densities**: use `--cluster-method hdbscan` (no eps parameter needed)
-- **Blurry or small faces**: use `--min-quality 0.3` to filter low-quality face detections
-- **Higher-accuracy embeddings**: use `--backend insightface` for 512-dim ArcFace embeddings
+## 调参技巧 Tuning Tips
 
-## Architecture
+| 问题 | 解决方案 |
+|------|----------|
+| **同人分到多组** | 提高 `--eps` (如 0.6) 或降低 `--merge-threshold` (如 0.70) |
+| **不同人合并了** | 降低 `--eps` (如 0.3) |
+| **漏检人脸** | 降低 `--min-confidence` (如 0.3) |
+| **糊脸被归入** | 提高 `--min-quality` (如 0.3) |
+| **多人合照处理** | Web UI 中手动分离 |
+| **AI 生成图效果差** | `--head-feature-weight 0.0` (头部姿势变化大，不适合用头部特征) |
 
-Visage combines four core technologies:
+## 架构概览 Architecture
 
-- **Face detection**: macOS Vision framework via pyobjc. Runs `VNDetectFaceRectanglesRequest` with multi-threaded batch processing. Returns normalized bounding boxes converted to pixel coordinates.
+详细说明 → [Architecture Guide](docs/architecture.md)
 
-- **Face embeddings**: pluggable backend system (`EmbeddingBackend` protocol). The default dlib backend (via face_recognition) produces 128-dimensional vectors with `small` (fast) and `large` (more accurate) model sizes. The optional InsightFace/ArcFace backend produces 512-dimensional vectors for higher accuracy. Embeddings are cached in a SQLite database keyed by file path and mtime fingerprint.
+```mermaid
+flowchart TB
+    subgraph Python Backend
+        P1[scanner.py — 文件扫描]
+        P2[detector.py — Vision 人脸检测]
+        P3[embedder.py — 特征提取]
+        P4[cluster.py — DBSCAN/HDBSCAN]
+        P5[organizer.py — 文件整理]
+    end
 
-- **Face quality**: Laplacian blur detection combined with face size ratio filtering. Each detected face receives a quality score from 0 to 1, usable with `--min-quality` to filter out blurry or small faces before clustering.
+    subgraph Web Server
+        S[app.py — FastAPI 服务]
+        R[routes.py — API 路由]
+        W[workspace.py — 内存状态]
+    end
 
-- **Clustering**: DBSCAN or HDBSCAN on L2-normalized embeddings. DBSCAN (scikit-learn) supports a fixed epsilon threshold or automatic estimation via the k-distance elbow method (maximum perpendicular distance from the first-to-last line). HDBSCAN handles clusters of varying density without requiring an eps parameter. After normalization, euclidean distance is monotonically related to cosine distance. Each cluster receives a confidence score computed as the mean cosine similarity of member embeddings to the cluster centroid.
+    subgraph Frontend
+        F[React SPA]
+        C[components/ — UI 组件]
+        ST[store/ — 状态管理]
+    end
 
-## License
+    P1 → P2 → P3 → P4 → P5
+    P4 -.->|web UI| W
+    W → R → F
+    F → C
+    F → ST
+```
+
+## 开发 Development
+
+- **运行测试**: `uv run pytest tests/` (364 个测试)
+- **前端测试**: `cd frontend && npx vitest run` (91 个测试)
+- **代码检查**: `uv run ruff check src/`
+- **前端构建**: `cd frontend && npm run build`
+
+详细 → [Development Guide](docs/development.md)
+
+## 系统要求 Requirements
+
+- macOS 13+ (Ventura 或更新)
+- Python 3.10+
+- cmake (用于构建 dlib): `brew install cmake`
+
+## 许可证 License
 
 MIT
