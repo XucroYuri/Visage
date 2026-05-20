@@ -447,7 +447,10 @@ def detect_faces_single(
         ]
         if not faces:
             return ImageResult(path=image_path, skipped=True, image_width=img_w, image_height=img_h)
-        return ImageResult(path=image_path, faces=faces, detection_stats=stats, image_width=img_w, image_height=img_h)
+        return ImageResult(
+            path=image_path, faces=faces, detection_stats=stats,
+            image_width=img_w, image_height=img_h,
+        )
     except Exception as exc:
         logger.warning("Face detection failed for %s: %s", image_path, exc)
         return ImageResult(path=image_path, error=str(exc))

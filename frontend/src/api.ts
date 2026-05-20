@@ -3,6 +3,7 @@ export interface FaceBox {
   right: number;
   bottom: number;
   left: number;
+  cluster_id: number;  // which cluster this face belongs to (-1 = noise/unclustered)
 }
 
 export interface PhotoInfo {
@@ -59,6 +60,23 @@ export interface MutationResult {
 export interface UndoResult {
   ok: boolean;
   undo: Record<string, unknown>;
+  workspace: WorkspaceState;
+}
+
+export interface ReclusterSettings {
+  cluster_method?: string;
+  min_samples?: number;
+  min_cluster_size?: number;
+  cluster_selection_epsilon?: number;
+  cluster_selection_method?: string;
+  merge_threshold?: number;
+  small_merge_threshold?: number;
+  min_reliable_size?: number;
+  head_feature_weight?: number;
+}
+
+export interface ReclusterResult {
+  ok: boolean;
   workspace: WorkspaceState;
 }
 
@@ -177,4 +195,32 @@ export function getImageUrl(
 
 export function pipelineStatusUrl(): string {
   return `${BASE}/pipeline-status`;
+}
+
+export function recluster(
+  settings: ReclusterSettings,
+): Promise<ReclusterResult> {
+  return request("/recluster", {
+    method: "POST",
+    body: JSON.stringify(settings),
+  });
+}
+
+export interface ConfigResponse {
+  copy_mode: boolean;
+  folder_prefix: string;
+  embedding_backend: string;
+  cluster_method: string;
+  min_samples: number;
+  min_cluster_size: number;
+  cluster_selection_epsilon: number;
+  cluster_selection_method: string;
+  merge_threshold: number;
+  small_merge_threshold: number;
+  min_reliable_size: number;
+  head_feature_weight: number;
+}
+
+export function fetchConfig(): Promise<ConfigResponse> {
+  return request("/config");
 }

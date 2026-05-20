@@ -5,6 +5,7 @@ Provides merge, split, rename, and undo operations for the review UI.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 
 from visage.cluster import (
@@ -70,9 +71,21 @@ class Workspace:
                         "right": int(f.face_box.right),
                         "bottom": int(f.face_box.bottom),
                         "left": int(f.face_box.left),
+                        "face_index": int(f.face_index),
                     }
                     for f in r.faces
                 ]
+
+        # ── Face-level cluster tracking ───────────────────────
+        # {image_path: {face_index: cluster_id}}
+        # Enables per-face cluster display in multi-face images
+        self._face_clusters: dict[str, dict[int, int]] = {}
+        for i, (path, face_idx) in enumerate(face_to_image):
+            if i < len(cluster_result.labels):
+                label = int(cluster_result.labels[i])
+                if path not in self._face_clusters:
+                    self._face_clusters[path] = {}
+                self._face_clusters[path][face_idx] = label
 
         # Total images/faces stats (precomputed)
         self._total_images = len(image_results)
@@ -117,7 +130,7 @@ class Workspace:
         if from_id not in self._cluster_mapping or to_id not in self._cluster_mapping:
             raise ValueError(f"Cluster not found: {from_id} or {to_id}")
 
-        # Save undo state
+        # Save undo state (including face-level snapshot)
         from_photos = list(self._cluster_mapping[from_id])
         to_photos_before = list(self._cluster_mapping[to_id])
         from_name = self._cluster_names.pop(from_id, None)
@@ -134,12 +147,16 @@ class Workspace:
                 "to_name_before": to_name_before,
                 "from_confidence": self._cluster_confidences.pop(from_id, 0.0),
                 "to_confidence_before": self._cluster_confidences.get(to_id, 0.0),
+                "face_snapshot": self._snapshot_face_clusters(from_photos),
             },
         ))
 
         # Apply merge
         self._cluster_mapping[to_id].extend(from_photos)
         del self._cluster_mapping[from_id]
+
+        # Update face-level tracking: all faces from from_id → to_id
+        self._update_face_clusters_for_cluster(from_id, to_id)
 
     def remove_face(self, image_path: str, from_cluster_id: int) -> None:
         """Remove a face/image from a cluster.
@@ -168,10 +185,17 @@ class Workspace:
                 "cluster_deleted": cluster_deleted,
                 "saved_name": saved_name,
                 "saved_confidence": saved_confidence,
+                "face_snapshot": self._snapshot_face_clusters([image_path]),
             },
         ))
 
         photos.remove(image_path)
+
+        # Update face-level tracking: faces in this cluster → noise (-1)
+        if image_path in self._face_clusters:
+            for face_idx, cur_id in self._face_clusters[image_path].items():
+                if cur_id == from_cluster_id:
+                    self._face_clusters[image_path][face_idx] = -1
 
         # Remove cluster if empty
         if not photos:
@@ -217,6 +241,7 @@ class Workspace:
                 "from_deleted": False,
                 "from_name": None,
                 "from_confidence": None,
+                "face_snapshot": self._snapshot_face_clusters([image_path]),
             },
         ))
 
@@ -235,6 +260,15 @@ class Workspace:
                 del self._cluster_mapping[from_cluster_id]
 
         self._cluster_mapping[to_cluster_id].append(image_path)
+
+        # Update face-level tracking
+        if from_noise:
+            self._update_face_clusters_for_image(image_path, to_cluster_id)
+        else:
+            if image_path in self._face_clusters:
+                for face_idx, cur_id in self._face_clusters[image_path].items():
+                    if cur_id == from_cluster_id:
+                        self._face_clusters[image_path][face_idx] = to_cluster_id
 
     def batch_assign_noise(self, image_paths: list[str], to_id: int) -> None:
         """Assign multiple noise photos to a cluster at once.
@@ -262,10 +296,15 @@ class Workspace:
                 "image_paths": list(image_paths),
                 "to_id": to_id,
                 "was_new_cluster": is_new_cluster,
+                "face_snapshot": self._snapshot_face_clusters(image_paths),
             },
         ))
 
         self._cluster_mapping[to_id].extend(image_paths)
+
+        # Update face-level: all faces in these images → to_id
+        for path in image_paths:
+            self._update_face_clusters_for_image(path, to_id)
 
     def batch_remove_faces(self, cluster_id: int, image_paths: list[str]) -> None:
         """Remove multiple faces from a cluster at once.
@@ -298,11 +337,18 @@ class Workspace:
                 "cluster_deleted": cluster_deleted,
                 "saved_name": saved_name,
                 "saved_confidence": saved_confidence,
+                "face_snapshot": self._snapshot_face_clusters(image_paths),
             },
         ))
 
         for path in image_paths:
             photos.remove(path)
+
+            # Update face-level: faces in this cluster → noise
+            if path in self._face_clusters:
+                for face_idx, cur_id in self._face_clusters[path].items():
+                    if cur_id == cluster_id:
+                        self._face_clusters[path][face_idx] = -1
 
         if not photos:
             del self._cluster_mapping[cluster_id]
@@ -388,6 +434,10 @@ class Workspace:
             self._cluster_confidences[from_id] = op.data["from_confidence"]
             self._cluster_confidences[to_id] = op.data["to_confidence_before"]
 
+            # Restore face-level tracking
+            if "face_snapshot" in op.data:
+                self._restore_face_clusters(op.data["face_snapshot"])
+
             result["from_id"] = from_id
             result["to_id"] = to_id
 
@@ -406,6 +456,10 @@ class Workspace:
                     self._cluster_names[from_cluster_id] = op.data["saved_name"]
                 if op.data["saved_confidence"] is not None:
                     self._cluster_confidences[from_cluster_id] = op.data["saved_confidence"]
+
+            # Restore face-level tracking
+            if "face_snapshot" in op.data:
+                self._restore_face_clusters(op.data["face_snapshot"])
 
             result["image_path"] = image_path
             result["cluster_id"] = from_cluster_id
@@ -448,6 +502,10 @@ class Workspace:
                     self._cluster_mapping[from_id].append(image_path)
             # If from_noise, the photo just goes back to being unclustered — no action needed
 
+            # Restore face-level tracking
+            if "face_snapshot" in op.data:
+                self._restore_face_clusters(op.data["face_snapshot"])
+
             result["image_path"] = image_path
             result["from_cluster_id"] = from_id
             result["to_cluster_id"] = to_id
@@ -467,6 +525,10 @@ class Workspace:
                 self._cluster_names.pop(to_id, None)
                 self._cluster_confidences.pop(to_id, None)
             # Photos go back to noise — no action needed (noise is computed dynamically)
+
+            # Restore face-level tracking
+            if "face_snapshot" in op.data:
+                self._restore_face_clusters(op.data["face_snapshot"])
 
             result["image_paths"] = image_paths
             result["to_cluster_id"] = to_id
@@ -488,6 +550,10 @@ class Workspace:
                     self._cluster_names[from_cluster_id] = op.data["saved_name"]
                 if op.data["saved_confidence"] is not None:
                     self._cluster_confidences[from_cluster_id] = op.data["saved_confidence"]
+
+            # Restore face-level tracking
+            if "face_snapshot" in op.data:
+                self._restore_face_clusters(op.data["face_snapshot"])
 
             result["image_paths"] = image_paths
             result["cluster_id"] = from_cluster_id
@@ -563,14 +629,70 @@ class Workspace:
         )
         return stats
 
+    # ── Face-level helpers ───────────────────────────────────
+
+    def _update_face_clusters_for_image(self, path: str, new_cluster_id: int) -> None:
+        """Set all tracked face_indices for an image to a cluster (or -1 for noise)."""
+        if path not in self._face_clusters:
+            return
+        for face_idx in self._face_clusters[path]:
+            self._face_clusters[path][face_idx] = new_cluster_id
+
+    def _update_face_clusters_for_cluster(
+        self, from_cluster_id: int, to_cluster_id: int,
+    ) -> None:
+        """Update all faces in a cluster to a new cluster ID.
+
+        Used when merging clusters or removing faces.
+        """
+        for path in self._cluster_mapping.get(from_cluster_id, []):
+            if path in self._face_clusters:
+                for face_idx, cur_id in list(self._face_clusters[path].items()):
+                    if cur_id == from_cluster_id:
+                        self._face_clusters[path][face_idx] = to_cluster_id
+
+    def _snapshot_face_clusters(self, paths: list[str]) -> dict:
+        """Snapshot face_clusters for a set of image paths (for undo)."""
+        return {p: deepcopy(self._face_clusters.get(p, {})) for p in paths}
+
+    def _restore_face_clusters(self, snapshot: dict) -> None:
+        """Restore face_clusters from a snapshot (undo)."""
+        for path, fc in snapshot.items():
+            if fc:
+                self._face_clusters[path] = fc
+            elif path in self._face_clusters:
+                del self._face_clusters[path]
+
     # ── API serialization ────────────────────────────────────────
 
-    def _photo_dict(self, path: str) -> dict:
-        """Build a photo entry with face bounding boxes and original image dimensions."""
+    def _photo_dict(self, path: str, filter_cluster: int | None = None) -> dict:
+        """Build a photo entry with face bounding boxes and original image dimensions.
+
+        Args:
+            path: Image path.
+            filter_cluster: If set, only include faces belonging to this cluster.
+        """
         w, h = self._image_sizes.get(path, (0, 0))
+        face_clusters = self._face_clusters.get(path, {})
+
+        faces = []
+        for face in self._face_boxes.get(path, []):
+            fi = face.get("face_index", 0)
+            cid = face_clusters.get(fi, -1)
+            face_entry = {
+                "top": face["top"],
+                "right": face["right"],
+                "bottom": face["bottom"],
+                "left": face["left"],
+                "cluster_id": cid,
+            }
+            if filter_cluster is not None and cid != filter_cluster:
+                continue
+            faces.append(face_entry)
+
         return {
             "path": path,
-            "faces": self._face_boxes.get(path, []),
+            "faces": faces,
             "width": w,
             "height": h,
         }
@@ -587,21 +709,22 @@ class Workspace:
             cid_int = int(cid)
             photos = self._cluster_mapping[cid]
             thumbnail = photos[0] if photos else None
+            # Filter face boxes to only show faces belonging to this cluster
             clusters.append({
                 "id": cid_int,
                 "name": self._cluster_names.get(cid, f"person_{cid_int:02d}"),
-                "photos": [self._photo_dict(p) for p in sorted(photos)],
+                "photos": [self._photo_dict(p, filter_cluster=cid_int) for p in sorted(photos)],
                 "photo_count": len(photos),
                 "thumbnail": thumbnail,
                 "confidence": round(float(self._cluster_confidences.get(cid, 0.0)), 3),
             })
             all_photo_paths.update(photos)
 
-        # All photos across all clusters (for "All Photos" view)
+        # All photos across all clusters — show all face boxes with cluster labels
         all_photos = [self._photo_dict(p) for p in sorted(all_photo_paths)]
 
-        # Noise/unclustered photos
-        noise = [self._photo_dict(p) for p in self.noise_photos]
+        # Noise/unclustered photos — only show unclustered faces
+        noise = [self._photo_dict(p, filter_cluster=-1) for p in self.noise_photos]
 
         return {
             "input_dir": self.input_dir,
@@ -622,6 +745,18 @@ class Workspace:
             "all_photos": all_photos,
             "next_cluster_id": int(self.next_cluster_id()),
             "can_undo": bool(self.can_undo()),
+        }
+
+    def get_recluster_data(self) -> dict:
+        """Return raw data needed for re-clustering.
+
+        Returns embeddings array, face_to_image mapping, and image results
+        so the server can re-run clustering without redoing detection/embedding.
+        """
+        return {
+            "embeddings": self._cluster_result.embeddings,
+            "face_to_image": list(self._face_to_image),
+            "image_results": self._image_results,
         }
 
     # ── Factory ─────────────────────────────────────────────────

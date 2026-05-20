@@ -1,10 +1,11 @@
 import { create } from "zustand";
 import { useMutation, useMutationState } from "@tanstack/react-query";
-import type { ClusterInfo, SaveSettings, WorkspaceState } from "../api";
+import type { ClusterInfo, ReclusterSettings, SaveSettings, WorkspaceState } from "../api";
 import {
   assignNoise,
   mergeClusters,
   moveFace,
+  recluster as reclusterApi,
   removeFace,
   renameCluster,
   save,
@@ -239,6 +240,32 @@ export function useSaveMutation() {
     },
     onError: (error: Error) => {
       addToast({ type: "error", text: `Save failed: ${error.message}` });
+    },
+  });
+}
+
+// ── Re-cluster ─────────────────────────────────────────────────
+
+export function useReclusterMutation() {
+  const addToast = useToastStore((s) => s.addToast);
+
+  return useMutation({
+    mutationFn: async (settings: ReclusterSettings) => {
+      const res = await reclusterApi(settings);
+      updateStore(res.workspace);
+      return res.workspace;
+    },
+    onSuccess: (ws) => {
+      addToast({
+        type: "success",
+        text: `Re-clustered: ${ws.stats.num_clusters} clusters, ${ws.stats.num_noise_faces} unclustered`,
+      });
+    },
+    onError: (error: Error) => {
+      addToast({
+        type: "error",
+        text: `Re-cluster failed: ${error.message}`,
+      });
     },
   });
 }

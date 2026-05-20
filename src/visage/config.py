@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import logging
 import tomllib
 
 from .hwdetect import detect_hardware, recommend_config
@@ -42,13 +42,14 @@ class VisageConfig:
     # >0 can trigger sklearn Cython bug with certain datasets
     cluster_selection_epsilon: float = 0.0
     cluster_selection_method: str = "eom"  # "eom" (stable) or "leaf" (fine-grained)
-    # cosine similarity threshold for post-clustering merge (0.85 ≈ 32° angle)
-    merge_threshold: float = 0.85
-    small_merge_threshold: float = 0.80  # relaxed threshold when one cluster is small
+    # cosine similarity threshold for post-clustering merge (0.80 ≈ 37° angle)
+    merge_threshold: float = 0.80
+    small_merge_threshold: float = 0.75  # relaxed threshold when one cluster is small
     min_reliable_size: int = 10  # clusters below this size use relaxed threshold
 
     # Head features (supplementary signal for clustering)
-    head_feature_weight: float = 0.2  # weight for head features in composite distance (0–1)
+    # For AI-generated/anime art, head pose varies a lot → set lower or 0
+    head_feature_weight: float = 0.0  # weight for head features in composite distance (0–1)
 
     # Processing
     batch_size: int = 100  # images per batch for progress reporting

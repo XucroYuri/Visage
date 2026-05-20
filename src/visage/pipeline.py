@@ -22,7 +22,6 @@ from .config import DEFAULT_OUTPUT_DIRNAME, VisageConfig
 from .detector import detect_faces_batch
 from .embedder import generate_embeddings_batch
 from .head_features import FEATURE_DIM
-from .hwdetect import memory_pressure_ok
 from .models import OrganizePlan, PipelineResult
 from .organizer import build_organize_plan, execute_organize_plan
 from .progress import ProgressDisplay
@@ -250,14 +249,6 @@ def run_pipeline(
         image_results, embedding_dim=backend.embedding_dim,
     )
 
-    # After extraction, clear per-face embedding references to reduce memory
-    # (the embeddings are now in the (N, D) numpy array)
-    for result in image_results:
-        for face in result.faces:
-            face.embedding = None
-            face.head_features = None
-    gc.collect()
-
     if len(embeddings) == 0:
         phase_durations["clustering"] = time.time() - phase_start
         prog.finish_phase("4/5 Clustering", "No embeddings to cluster")
@@ -271,6 +262,7 @@ def run_pipeline(
         )
 
     # Build composite distance matrix if using head features
+    # NOTE: this must happen BEFORE clearing per-face head_features below
     distance_matrix = None
     if cfg.head_feature_weight > 0.0 and len(embeddings) > 1:
         head_result = _extract_head_features(image_results, face_to_image)
@@ -302,6 +294,14 @@ def run_pipeline(
                 # For any pair where either face is invalid, use face-only distance
                 use_face_only = invalid[:, None] | invalid[None, :]
                 distance_matrix = np.where(use_face_only, face_only_dist, distance_matrix)
+
+    # After distance matrix computation, clear per-face references to reduce memory
+    # (embeddings are now in the (N, D) numpy array)
+    for result in image_results:
+        for face in result.faces:
+            face.embedding = None
+            face.head_features = None
+    gc.collect()
 
     cluster_result = cluster_faces(
         embeddings,
@@ -368,10 +368,11 @@ def run_pipeline(
             progress_callback=organize_progress,
         )
 
-        action = "copied" if cfg.copy_mode else "moved"
+        stat_key = "copy" if cfg.copy_mode else "move"
+        display_action = "copied" if cfg.copy_mode else "moved"
         prog.finish_phase(
             "5/5 Organize",
-            f"{stats.get(action, 0)} files {action} to {out}",
+            f"{stats.get(stat_key, 0)} files {display_action} to {out}",
         )
 
     phase_durations["organize"] = time.time() - phase_start

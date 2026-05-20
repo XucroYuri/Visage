@@ -8,8 +8,8 @@ const basePhoto: PhotoInfo = {
   width: 640,
   height: 480,
   faces: [
-    { top: 10, right: 100, bottom: 120, left: 5 },
-    { top: 50, right: 200, bottom: 180, left: 80 },
+    { top: 10, right: 100, bottom: 120, left: 5, cluster_id: 0 },
+    { top: 50, right: 200, bottom: 180, left: 80, cluster_id: 1 },
   ],
 };
 

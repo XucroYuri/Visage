@@ -349,6 +349,8 @@ export default function App() {
         embeddingBackend={ws.config.embedding_backend}
         totalImages={ws.stats.total_images}
         imagesWithFaces={ws.stats.images_with_faces}
+        clusterMethod={ws.config.embedding_backend ? "hdbscan" : "dbscan"}
+        mergeThreshold={0.80}
       />
 
       <SaveDialog

@@ -25,6 +25,8 @@ interface PhotoCardProps {
   onSelectToggle?: (imagePath: string) => void;
   /** Show selection checkboxes */
   selectionMode?: boolean;
+  /** If set, only show face boxes belonging to this cluster */
+  displayClusterId?: number;
 }
 
 export function PhotoCard({
@@ -39,6 +41,7 @@ export function PhotoCard({
   selected = false,
   onSelectToggle,
   selectionMode = false,
+  displayClusterId,
 }: PhotoCardProps) {
   const [showFull, setShowFull] = useState(false);
   const [showMoveMenu, setShowMoveMenu] = useState(false);
@@ -119,18 +122,20 @@ export function PhotoCard({
 
           {/* Face bounding boxes — uses original image dimensions for correct percentages */}
           {photo.width > 0 &&
-            photo.faces.map((face, i) => (
-              <div
-                key={i}
-                className="absolute border-2 border-green-400 rounded-sm pointer-events-none"
-                style={{
-                  left: `${(face.left / photo.width) * 100}%`,
-                  top: `${(face.top / photo.height) * 100}%`,
-                  width: `${((face.right - face.left) / photo.width) * 100}%`,
-                  height: `${((face.bottom - face.top) / photo.height) * 100}%`,
-                }}
-              />
-            ))}
+            photo.faces
+              .filter((f) => displayClusterId == null || f.cluster_id === displayClusterId)
+              .map((face, i) => (
+                <div
+                  key={i}
+                  className="absolute border-2 border-green-400 rounded-sm pointer-events-none"
+                  style={{
+                    left: `${(face.left / photo.width) * 100}%`,
+                    top: `${(face.top / photo.height) * 100}%`,
+                    width: `${((face.right - face.left) / photo.width) * 100}%`,
+                    height: `${((face.bottom - face.top) / photo.height) * 100}%`,
+                  }}
+                />
+              ))}
         </div>
 
         {/* Hover actions */}

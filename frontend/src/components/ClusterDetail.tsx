@@ -166,6 +166,7 @@ export function ClusterDetail() {
                 onMove={(toId) => handleMove(photo.path, cluster.id, toId)}
                 otherClusters={otherClusters}
                 onViewFull={() => setViewerPhoto(photo)}
+                displayClusterId={cluster.id}
               />
             </div>
           ))}

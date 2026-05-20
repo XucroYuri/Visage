@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSettingsStore } from "../store/settings";
+import { useReclusterMutation } from "../store/workspace";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -10,9 +11,11 @@ interface SettingsPanelProps {
   embeddingBackend: string;
   totalImages: number;
   imagesWithFaces: number;
+  clusterMethod: string;
+  mergeThreshold: number;
 }
 
-type TabId = "input" | "output";
+type TabId = "input" | "output" | "clustering";
 
 // ── Component ──────────────────────────────────────────────────
 
@@ -23,6 +26,8 @@ export function SettingsPanel({
   embeddingBackend,
   totalImages,
   imagesWithFaces,
+  clusterMethod,
+  mergeThreshold,
 }: SettingsPanelProps) {
   // ── Close animation state ──────────────────────────────────
   // When `open` becomes true, render the panel in its "entering" state,
@@ -129,7 +134,7 @@ export function SettingsPanel({
 
         {/* Tab bar */}
         <div className="flex gap-1 px-5 pt-3.5 pb-3 border-b border-gray-100 shrink-0">
-          {(["input", "output"] as const).map((tab) => (
+          {(["input", "output", "clustering"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -139,7 +144,7 @@ export function SettingsPanel({
                   : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
               }`}
             >
-              {tab === "input" ? "Input" : "Output"}
+              {tab === "input" ? "Input" : tab === "output" ? "Output" : "Clustering"}
             </button>
           ))}
         </div>
@@ -152,6 +157,11 @@ export function SettingsPanel({
               embeddingBackend={embeddingBackend}
               totalImages={totalImages}
               imagesWithFaces={imagesWithFaces}
+            />
+          ) : activeTab === "clustering" ? (
+            <ClusteringTab
+              clusterMethod={clusterMethod}
+              mergeThreshold={mergeThreshold}
             />
           ) : (
             <OutputTab />
@@ -407,6 +417,228 @@ function RadioLabel({
       />
       {label}
     </label>
+  );
+}
+
+// ── Clustering Tab ─────────────────────────────────────────────
+
+interface ClusterParamProps {
+  label: string;
+  value: number | string;
+  onChange: (v: number | string) => void;
+  type?: "number" | "text";
+  step?: number;
+  min?: number;
+  max?: number;
+  options?: { value: string; label: string }[];
+  help?: string;
+}
+
+function ClusterParam({
+  label,
+  value,
+  onChange,
+  type = "number",
+  step,
+  min,
+  max,
+  options,
+  help,
+}: ClusterParamProps) {
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+        {label}
+      </label>
+      {options ? (
+        <select
+          value={String(value)}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-shadow"
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type={type}
+          value={value}
+          onChange={(e) => {
+            const v = type === "number" ? parseFloat(e.target.value) : e.target.value;
+            onChange(v);
+          }}
+          step={step}
+          min={min}
+          max={max}
+          className="w-full text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-shadow"
+        />
+      )}
+      {help && <p className="text-[11px] text-gray-400 leading-snug">{help}</p>}
+    </div>
+  );
+}
+
+function ClusteringTab({
+  clusterMethod: initialClusterMethod,
+  mergeThreshold: initialMergeThreshold,
+}: {
+  clusterMethod: string;
+  mergeThreshold: number;
+}) {
+  const reclusterMutation = useReclusterMutation();
+
+  const [method, setMethod] = useState(initialClusterMethod || "hdbscan");
+  const [minSamples, setMinSamples] = useState(2);
+  const [minClusterSize, setMinClusterSize] = useState(2);
+  const [cse, setCse] = useState(0.0);
+  const [csm, setCsm] = useState("eom");
+  const [mergeThresh, setMergeThresh] = useState(initialMergeThreshold || 0.80);
+  const [smallMergeThresh, setSmallMergeThresh] = useState(0.75);
+  const [minReliableSize, setMinReliableSize] = useState(10);
+  const [hfWeight, setHfWeight] = useState(0.0);
+
+  const handleRecluster = useCallback(() => {
+    const settings = {
+      cluster_method: method,
+      min_samples: minSamples,
+      min_cluster_size: minClusterSize,
+      cluster_selection_epsilon: cse,
+      cluster_selection_method: csm,
+      merge_threshold: mergeThresh,
+      small_merge_threshold: smallMergeThresh,
+      min_reliable_size: minReliableSize,
+      head_feature_weight: hfWeight,
+    };
+    reclusterMutation.mutate(settings);
+  }, [
+    method, minSamples, minClusterSize, cse, csm,
+    mergeThresh, smallMergeThresh, minReliableSize, hfWeight,
+    reclusterMutation,
+  ]);
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-gray-400 leading-snug">
+        Adjust clustering parameters and re-run to improve results
+        without re-scanning or re-generating embeddings.
+      </p>
+
+      <div className="space-y-3">
+        <ClusterParam
+          label="Cluster Method"
+          value={method}
+          onChange={(v) => setMethod(String(v))}
+          options={[
+            { value: "hdbscan", label: "HDBSCAN (recommended)" },
+            { value: "dbscan", label: "DBSCAN (legacy)" },
+          ]}
+        />
+
+        <ClusterParam
+          label="Min Samples"
+          value={minSamples}
+          onChange={(v) => setMinSamples(Number(v))}
+          min={1}
+          max={20}
+          help="Lower = more clusters (finer), Higher = fewer clusters (coarser)"
+        />
+
+        {method === "hdbscan" && (
+          <>
+            <ClusterParam
+              label="Min Cluster Size"
+              value={minClusterSize}
+              onChange={(v) => setMinClusterSize(Number(v))}
+              min={2}
+              max={50}
+              help="Minimum faces needed to form a new cluster"
+            />
+
+            <ClusterParam
+              label="Cluster Selection Epsilon"
+              value={cse}
+              onChange={(v) => setCse(Number(v))}
+              step={0.05}
+              min={0}
+              max={1}
+              help="Higher values merge nearby clusters. Try 0.10–0.25 for fewer clusters"
+            />
+
+            <ClusterParam
+              label="Selection Method"
+              value={csm}
+              onChange={(v) => setCsm(String(v))}
+              options={[
+                { value: "eom", label: "EOM (Excess of Mass)" },
+                { value: "leaf", label: "Leaf (more clusters)" },
+              ]}
+              help="EOM produces fewer, more stable clusters"
+            />
+          </>
+        )}
+
+        <ClusterParam
+          label="Merge Threshold"
+          value={mergeThresh}
+          onChange={(v) => setMergeThresh(Number(v))}
+          step={0.05}
+          min={0}
+          max={1}
+          help="Cosine similarity threshold (higher = stricter). Lower (0.70–0.80) merges more aggressively"
+        />
+
+        <ClusterParam
+          label="Small Merge Threshold"
+          value={smallMergeThresh}
+          onChange={(v) => setSmallMergeThresh(Number(v))}
+          step={0.05}
+          min={0}
+          max={1}
+          help="Relaxed threshold for small clusters"
+        />
+
+        <ClusterParam
+          label="Min Reliable Size"
+          value={minReliableSize}
+          onChange={(v) => setMinReliableSize(Number(v))}
+          min={1}
+          max={100}
+          help="Clusters below this use the relaxed threshold"
+        />
+
+        <ClusterParam
+          label="Head Feature Weight"
+          value={hfWeight}
+          onChange={(v) => setHfWeight(Number(v))}
+          step={0.1}
+          min={0}
+          max={1}
+          help="0 = ignore head pose features (recommended for AI art)"
+        />
+      </div>
+
+      <div className="pt-3 border-t border-gray-100">
+        <button
+          onClick={handleRecluster}
+          disabled={reclusterMutation.isPending}
+          className="w-full px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg
+                     hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed
+                     transition-colors flex items-center justify-center gap-2"
+        >
+          {reclusterMutation.isPending ? (
+            <>
+              <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Re-clustering...
+            </>
+          ) : (
+            "Re-cluster"
+          )}
+        </button>
+      </div>
+    </div>
   );
 }
 

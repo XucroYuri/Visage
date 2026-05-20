@@ -10,7 +10,7 @@ import webbrowser
 from collections.abc import Generator
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -261,10 +261,14 @@ def create_app(input_dir: str, config: VisageConfig | None = None) -> FastAPI:
         # and are more specific than the {full_path:path} catch-all.
         @app.get("/{full_path:path}", include_in_schema=False)
         async def serve_spa(full_path: str):
-            file_path = static_dir / full_path
-            # Serve root-level static files (favicon.svg, icons.svg)
-            if file_path.exists() and file_path.is_file():
-                return FileResponse(str(file_path))
+            # Prevent path traversal: resolve and validate within static dir
+            resolved = (static_dir / full_path).resolve()
+            try:
+                resolved.relative_to(static_dir.resolve())
+            except ValueError:
+                raise HTTPException(status_code=403) from None
+            if resolved.exists() and resolved.is_file():
+                return FileResponse(str(resolved))
             # Everything else → SPA index.html
             return FileResponse(str(static_dir / "index.html"))
 
