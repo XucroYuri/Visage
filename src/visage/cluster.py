@@ -344,40 +344,144 @@ def compute_composite_distance(
     face_embeddings: np.ndarray,
     head_features: np.ndarray,
     head_weight: float = 0.2,
+    dtype: np.dtype = np.float32,
 ) -> np.ndarray:
     """Compute a composite distance matrix from face embeddings and head features.
 
     Combines L2-normalized face embedding distances with head feature distances
     using a weighted sum. The face embeddings should already be L2-normalized.
 
+    Uses in-place operations and configurable dtype to minimize memory:
+    - float32 halves memory vs float64 (recommended for most cases)
+    - No temporary face_dist / head_dist arrays — reuses similarity matrices
+    - Final weighted sum fused in-place
+
     Args:
         face_embeddings: (N, D) array of L2-normalized face embeddings.
         head_features: (N, H) array of head feature vectors.
         head_weight: Weight for head feature distance (0 = face only, 1 = head only).
+        dtype: Output dtype (default float32 for memory efficiency).
 
     Returns:
         (N, N) symmetric distance matrix.
     """
     face_weight = 1.0 - head_weight
 
-    # Face embedding distance: euclidean on L2-normalized = sqrt(2 - 2*cos_sim)
-    # Use cosine distance directly for better scaling
-    face_sim = face_embeddings @ face_embeddings.T
-    face_dist = np.clip(1.0 - face_sim, 0.0, 2.0)
+    # Cast to target dtype to save memory (default float32: 4 bytes vs 8)
+    fe = face_embeddings.astype(dtype, copy=False)
+
+    # Face cosine similarity → distance (reuse the matrix in-place)
+    face_sim = fe @ fe.T
+    # In-place: 1.0 - sim → clip → store back (no separate face_dist array)
+    np.subtract(1.0, face_sim, out=face_sim)
+    np.clip(face_sim, 0.0, 2.0, out=face_sim)
 
     if head_weight <= 0.0 or head_features.shape[1] == 0:
-        return face_dist
+        if face_weight != 1.0:
+            np.multiply(face_sim, face_weight, out=face_sim)
+        return face_sim
 
     # Normalize head features to unit length
-    norms = np.linalg.norm(head_features, axis=1, keepdims=True)
+    hf = head_features.astype(dtype, copy=False)
+    norms = np.linalg.norm(hf, axis=1, keepdims=True)
     norms = np.maximum(norms, 1e-10)
-    head_norm = head_features / norms
+    head_norm = hf / norms
 
-    # Head feature distance: cosine distance
+    # Head cosine similarity → distance (reuse the matrix in-place)
     head_sim = head_norm @ head_norm.T
-    head_dist = np.clip(1.0 - head_sim, 0.0, 2.0)
+    np.subtract(1.0, head_sim, out=head_sim)
+    np.clip(head_sim, 0.0, 2.0, out=head_sim)
 
-    return face_weight * face_dist + head_weight * head_dist
+    # Fused weighted sum in-place: result = w_f * face_dist + w_h * head_dist
+    # Reuse face_sim as the output matrix
+    np.multiply(face_sim, face_weight, out=face_sim)
+    np.add(face_sim, head_weight * head_sim, out=face_sim)
+
+    return face_sim
+
+
+def compute_composite_distance_chunked(
+    face_embeddings: np.ndarray,
+    head_features: np.ndarray,
+    head_weight: float = 0.2,
+    chunk_size: int = 500,
+    dtype: np.dtype = np.float32,
+) -> np.ndarray:
+    """Compute composite distance matrix in row-blocks to limit peak memory.
+
+    For N faces, the full N×N distance matrix requires O(N²) memory.
+    This function computes the matrix in row-blocks of size `chunk_size`,
+    writing to a memory-mapped temp file to keep peak RAM at
+    O(chunk_size × N). The result is loaded back into a regular array
+    for HDBSCAN compatibility.
+
+    Args:
+        face_embeddings: (N, D) array of L2-normalized face embeddings.
+        head_features: (N, H) array of head feature vectors.
+        head_weight: Weight for head feature distance (0 = face only).
+        chunk_size: Number of rows per block (controls peak memory).
+        dtype: Output dtype (default float32 for memory efficiency).
+
+    Returns:
+        (N, N) symmetric distance matrix.
+    """
+    import tempfile
+    from pathlib import Path
+
+    n = len(face_embeddings)
+    face_weight = 1.0 - head_weight
+
+    # Cast inputs
+    fe = face_embeddings.astype(dtype, copy=False)
+    hf = (
+        head_features.astype(dtype, copy=False)
+        if head_weight > 0 and head_features.shape[1] > 0
+        else None
+    )
+
+    # Pre-normalize head features
+    head_norm = None
+    if hf is not None and hf.shape[1] > 0:
+        norms = np.linalg.norm(hf, axis=1, keepdims=True)
+        norms = np.maximum(norms, 1e-10)
+        head_norm = hf / norms
+
+    # Create memory-mapped temp file for the distance matrix
+    tmp = tempfile.NamedTemporaryFile(suffix=".dat", delete=False)
+    tmp_path = Path(tmp.name)
+    try:
+        dist = np.memmap(tmp.name, dtype=dtype, mode="w+", shape=(n, n))
+
+        for start in range(0, n, chunk_size):
+            end = min(start + chunk_size, n)
+            block = fe[start:end]  # (chunk, D)
+
+            # Face similarity for this chunk
+            face_sim = block @ fe.T  # (chunk, N)
+            np.subtract(1.0, face_sim, out=face_sim)
+            np.clip(face_sim, 0.0, 2.0, out=face_sim)
+
+            if head_norm is not None:
+                head_sim = head_norm[start:end] @ head_norm.T
+                np.subtract(1.0, head_sim, out=head_sim)
+                np.clip(head_sim, 0.0, 2.0, out=head_sim)
+                np.multiply(face_sim, face_weight, out=face_sim)
+                np.add(face_sim, head_weight * head_sim, out=face_sim)
+            elif face_weight != 1.0:
+                np.multiply(face_sim, face_weight, out=face_sim)
+
+            dist[start:end] = face_sim
+
+        dist.flush()
+
+        # Load into memory for HDBSCAN (needs a regular ndarray)
+        result = np.array(dist, dtype=dtype)
+        if hasattr(dist, "_mmap"):
+            dist._mmap.close()
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    return result
 
 
 def merge_clusters(

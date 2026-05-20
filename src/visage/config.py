@@ -4,7 +4,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import logging
 import tomllib
+
+from .hwdetect import detect_hardware, recommend_config
+
+logger = logging.getLogger(__name__)
 
 SUPPORTED_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".heic", ".heif", ".tif", ".tiff"})
 
@@ -31,9 +36,9 @@ class VisageConfig:
     # Clustering
     cluster_method: str = "hdbscan"  # "dbscan" or "hdbscan"
     dbscan_eps: float = 0.5  # max distance between embeddings in same cluster — DBSCAN only
-    dbscan_min_samples: int = 3  # min faces to form a cluster (also used as HDBSCAN min_samples)
+    dbscan_min_samples: int = 2  # min faces to form a cluster (also used as HDBSCAN min_samples)
     auto_eps: bool = False  # automatically estimate eps using k-distance elbow — DBSCAN only
-    hdbscan_min_cluster_size: int = 5  # minimum cluster size for HDBSCAN
+    hdbscan_min_cluster_size: int = 2  # minimum cluster size for HDBSCAN
     # >0 can trigger sklearn Cython bug with certain datasets
     cluster_selection_epsilon: float = 0.0
     cluster_selection_method: str = "eom"  # "eom" (stable) or "leaf" (fine-grained)
@@ -48,6 +53,10 @@ class VisageConfig:
     # Processing
     batch_size: int = 100  # images per batch for progress reporting
     max_workers: int = 4  # parallel detection workers
+    max_image_dimension: int = 0  # 0 = no downscaling; e.g. 2048 to resize large images
+    use_float32_cluster: bool = False  # use float32 for distance matrix (halves memory)
+    cluster_chunk_size: int = 0  # 0 = full NxN matrix; >0 = row-block size for chunking
+    sample_limit: int | None = None  # max faces before sampling (None = no limit)
 
     # Output
     copy_mode: bool = True  # True = copy, False = move
@@ -187,11 +196,13 @@ def build_config(
     input_dir: str | None = None,
     overrides: dict[str, Any] | None = None,
 ) -> VisageConfig:
-    """Build a VisageConfig from file, input directory, and CLI overrides.
+    """Build a VisageConfig from file, input directory, CLI overrides, and hardware.
 
-    Priority: CLI overrides > --config file > visage.toml in input dir > defaults.
+    Priority: CLI overrides > --config file > visage.toml in input dir >
+              hardware-aware recommendations > code defaults.
     """
     kwargs: dict[str, Any] = {}
+    user_set: set[str] = set()  # fields explicitly set by user (file or CLI)
 
     # Try loading from config file
     config_paths: list[Path] = []
@@ -204,11 +215,51 @@ def build_config(
         if cp.exists():
             toml_data = load_config_from_file(cp)
             for section, key_map in _TOML_KEY_MAP.items():
-                kwargs.update(_apply_toml_section(toml_data, section, key_map))
+                applied = _apply_toml_section(toml_data, section, key_map)
+                kwargs.update(applied)
+                user_set.update(applied.keys())
             break  # first found wins
 
     # Apply CLI overrides (highest priority)
     if overrides:
-        kwargs.update({k: v for k, v in overrides.items() if v is not None})
+        for k, v in overrides.items():
+            if v is not None:
+                kwargs[k] = v
+                user_set.add(k)
+
+    # ── Hardware-aware defaults (applied only if not set by user) ──
+    try:
+        hw = detect_hardware()
+        rec = recommend_config(hw)
+        logger.info(
+            "Hardware: %.1f GB RAM, %d cores → backend=%s, workers=%d",
+            hw.total_ram_gb, hw.physical_cores, rec.backend, rec.max_workers,
+        )
+
+        hw_defaults = {
+            "max_workers": rec.max_workers,
+            "max_image_dimension": rec.max_image_dimension,
+            "use_float32_cluster": rec.use_float32_cluster,
+            "cluster_chunk_size": rec.cluster_chunk_size,
+            "head_feature_weight": rec.head_feature_weight,
+            "sample_limit": rec.sample_limit,
+        }
+        # Only apply backend recommendation if user didn't specify one
+        if "embedding_backend" not in user_set:
+            hw_defaults["embedding_backend"] = rec.backend
+
+        for key, val in hw_defaults.items():
+            if key not in user_set:
+                kwargs.setdefault(key, val)
+
+        if rec.use_float32_cluster:
+            logger.info("Clustering: float32 mode (memory-optimized)")
+        if rec.max_image_dimension > 0:
+            logger.info(
+                "Image downscaling: max %dpx (memory-optimized)",
+                rec.max_image_dimension,
+            )
+    except Exception:
+        logger.warning("Hardware detection failed, using code defaults", exc_info=True)
 
     return VisageConfig(**kwargs)

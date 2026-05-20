@@ -83,6 +83,7 @@ def generate_embeddings_for_image(
     num_jitters: int = 1,
     backend: EmbeddingBackend | None = None,
     min_face_quality: float = 0.0,
+    max_image_dimension: int = 0,
 ) -> ImageResult:
     """Generate embeddings for all detected faces in a single image.
 
@@ -95,6 +96,8 @@ def generate_embeddings_for_image(
         num_jitters: Re-sample count — dlib only.
         backend: Optional EmbeddingBackend instance.
         min_face_quality: Minimum quality score [0, 1]; 0 = no filtering.
+        max_image_dimension: If > 0, downscale image if its longest side exceeds
+                             this value (saves memory for large photos).
 
     Returns:
         The same ImageResult with embeddings populated.
@@ -103,7 +106,9 @@ def generate_embeddings_for_image(
         return image_result
 
     try:
-        image_array = load_image_as_numpy(image_result.path)
+        image_array = load_image_as_numpy(
+            image_result.path, max_dimension=max_image_dimension,
+        )
     except Exception as exc:
         image_result.error = f"Cannot load image for embedding: {exc}"
         logger.warning("Failed to load %s for embedding: %s", image_result.path, exc)
@@ -159,6 +164,7 @@ def generate_embeddings_batch(
     cache: EmbeddingCache | None = None,
     backend: EmbeddingBackend | None = None,
     min_face_quality: float = 0.0,
+    max_image_dimension: int = 0,
 ) -> tuple[list[ImageResult], int]:
     """Generate embeddings for all detected faces across multiple images.
 
@@ -174,6 +180,7 @@ def generate_embeddings_batch(
         cache: Optional EmbeddingCache for storing/retrieving results.
         backend: Optional EmbeddingBackend instance.
         min_face_quality: Minimum quality score [0, 1]; 0 = no filtering.
+        max_image_dimension: If > 0, downscale images exceeding this dimension.
 
     Returns:
         Tuple of (updated ImageResult list, number of cache hits).
@@ -210,6 +217,7 @@ def generate_embeddings_batch(
         generate_embeddings_for_image(
             result, model=model, num_jitters=num_jitters,
             backend=backend, min_face_quality=min_face_quality,
+            max_image_dimension=max_image_dimension,
         )
 
         # Store in cache

@@ -80,7 +80,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     cluster_group.add_argument(
         "--min-samples", type=int, default=None,
-        help="Minimum samples per cluster (default: 2)",
+        help="Minimum samples per cluster (default: 2, also used as HDBSCAN min_samples)",
     )
     cluster_group.add_argument(
         "--auto-eps", action="store_true", default=False,
@@ -88,7 +88,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     cluster_group.add_argument(
         "--min-cluster-size", type=int, default=None,
-        help="Minimum cluster size for HDBSCAN (default: 3)",
+        help="Minimum cluster size for HDBSCAN (default: 2)",
     )
     cluster_group.add_argument(
         "--cluster-selection-epsilon", type=float, default=None,

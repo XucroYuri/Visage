@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import gc
+import logging
 import time
 
 import numpy as np
@@ -12,6 +14,7 @@ from .cluster import (
     cluster_faces,
     compute_cluster_confidences,
     compute_composite_distance,
+    compute_composite_distance_chunked,
     extract_embeddings,
     merge_clusters,
 )
@@ -19,10 +22,13 @@ from .config import DEFAULT_OUTPUT_DIRNAME, VisageConfig
 from .detector import detect_faces_batch
 from .embedder import generate_embeddings_batch
 from .head_features import FEATURE_DIM
+from .hwdetect import memory_pressure_ok
 from .models import OrganizePlan, PipelineResult
 from .organizer import build_organize_plan, execute_organize_plan
 from .progress import ProgressDisplay
 from .scanner import scan_images
+
+logger = logging.getLogger(__name__)
 
 
 def _extract_head_features(
@@ -95,6 +101,11 @@ def run_pipeline(
     own_cache = cache is None
     if cache is None:
         cache = EmbeddingCache(input_path)
+
+    logger.info(
+        "Pipeline start: float32_cluster=%s, max_img_dim=%d, head_weight=%.2f",
+        cfg.use_float32_cluster, cfg.max_image_dimension, cfg.head_feature_weight,
+    )
 
     # ── Phase 1: Scan ──────────────────────────────────────────────
     phase_start = time.time()
@@ -190,15 +201,38 @@ def run_pipeline(
         num_jitters=cfg.num_jitters,
     )
 
-    image_results, cache_hits = generate_embeddings_batch(
-        image_results,
-        model=cfg.embedding_model,
-        num_jitters=cfg.num_jitters,
-        progress_callback=embedding_progress,
-        cache=cache,
-        backend=backend,
-        min_face_quality=cfg.min_face_quality,
-    )
+    try:
+        image_results, cache_hits = generate_embeddings_batch(
+            image_results,
+            model=cfg.embedding_model,
+            num_jitters=cfg.num_jitters,
+            progress_callback=embedding_progress,
+            cache=cache,
+            backend=backend,
+            min_face_quality=cfg.min_face_quality,
+            max_image_dimension=cfg.max_image_dimension,
+        )
+    except MemoryError:
+        logger.warning(
+            "Embedding phase ran out of memory. "
+            "Retrying with dlib backend and reduced image dimensions."
+        )
+        gc.collect()
+        # Degrade: switch to dlib (lighter) and halve max dimension
+        degraded_backend = get_backend("dlib", model="small", num_jitters=1)
+        degraded_dim = max(768, (cfg.max_image_dimension or 2048) // 2)
+        prog._print(f"  (degraded: dlib backend, max {degraded_dim}px)")
+
+        image_results, cache_hits = generate_embeddings_batch(
+            image_results,
+            model="small",
+            num_jitters=1,
+            progress_callback=embedding_progress,
+            cache=cache,
+            backend=degraded_backend,
+            min_face_quality=cfg.min_face_quality,
+            max_image_dimension=degraded_dim,
+        )
 
     faces_with_embeddings = sum(
         len(r.faces) for r in image_results if r.faces
@@ -215,6 +249,14 @@ def run_pipeline(
     embeddings, face_to_image = extract_embeddings(
         image_results, embedding_dim=backend.embedding_dim,
     )
+
+    # After extraction, clear per-face embedding references to reduce memory
+    # (the embeddings are now in the (N, D) numpy array)
+    for result in image_results:
+        for face in result.faces:
+            face.embedding = None
+            face.head_features = None
+    gc.collect()
 
     if len(embeddings) == 0:
         phase_durations["clustering"] = time.time() - phase_start
@@ -236,9 +278,21 @@ def run_pipeline(
         if head_feats is not None and head_feats.shape[1] > 0:
             # L2-normalize embeddings for composite distance
             normed = _normalize_embeddings(embeddings)
-            distance_matrix = compute_composite_distance(
-                normed, head_feats, head_weight=cfg.head_feature_weight,
-            )
+            cluster_dtype = np.float32 if cfg.use_float32_cluster else np.float64
+            if cfg.cluster_chunk_size > 0 and len(embeddings) > cfg.cluster_chunk_size:
+                logger.info(
+                    "Using chunked distance matrix (chunk=%d, N=%d)",
+                    cfg.cluster_chunk_size, len(embeddings),
+                )
+                distance_matrix = compute_composite_distance_chunked(
+                    normed, head_feats, head_weight=cfg.head_feature_weight,
+                    chunk_size=cfg.cluster_chunk_size, dtype=cluster_dtype,
+                )
+            else:
+                distance_matrix = compute_composite_distance(
+                    normed, head_feats, head_weight=cfg.head_feature_weight,
+                    dtype=cluster_dtype,
+                )
             # Fix zero-vector entries: use face-only distance for pairs
             # where either face has missing head features
             if not head_valid.all():

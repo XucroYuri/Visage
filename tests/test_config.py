@@ -31,8 +31,8 @@ class TestVisageConfigDefaults:
         assert config.min_face_quality == 0.0
         assert config.cluster_method == "hdbscan"
         assert config.dbscan_eps == 0.5
-        assert config.dbscan_min_samples == 3
-        assert config.hdbscan_min_cluster_size == 5
+        assert config.dbscan_min_samples == 2
+        assert config.hdbscan_min_cluster_size == 2
         assert config.cluster_selection_epsilon == 0.0
         assert config.cluster_selection_method == "eom"
         assert config.head_feature_weight == 0.2

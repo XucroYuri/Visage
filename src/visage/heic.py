@@ -23,11 +23,13 @@ except ImportError:
     _HEIF_AVAILABLE = False
 
 
-def load_image_as_numpy(path: str) -> np.ndarray:
+def load_image_as_numpy(path: str, max_dimension: int = 0) -> np.ndarray:
     """Load any supported image as an RGB numpy array.
 
     Args:
         path: Path to the image file.
+        max_dimension: If > 0, downscale the image so its longest side
+                       does not exceed this value (preserves aspect ratio).
 
     Returns:
         numpy array of shape (H, W, 3) with dtype uint8.
@@ -36,6 +38,15 @@ def load_image_as_numpy(path: str) -> np.ndarray:
         ValueError: If the image cannot be loaded.
     """
     img = load_image_as_pil(path)
+
+    if max_dimension > 0:
+        w, h = img.size
+        longest = max(w, h)
+        if longest > max_dimension:
+            ratio = max_dimension / longest
+            new_w, new_h = int(w * ratio), int(h * ratio)
+            img = img.resize((new_w, new_h), Image.LANCZOS)
+
     return np.array(img)
 
 
