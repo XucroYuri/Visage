@@ -55,14 +55,19 @@ export function PhotoViewer({
   }, []);
 
   return (
+    /* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */
     <div
       ref={overlayRef}
       className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center cursor-pointer animate-fade-in"
       onClick={onClose}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
       tabIndex={0}
       role="dialog"
       aria-label={`Full-size view of ${filename}`}
     >
+      {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
       {/* Close button */}
       <button
         onClick={onClose}
@@ -89,6 +94,7 @@ export function PhotoViewer({
       {/* Image */}
       <div
         className="relative max-h-[90vh] max-w-[90vw] animate-scale-in"
+        role="presentation"
         onClick={(e) => e.stopPropagation()}
       >
         <img

@@ -17,6 +17,7 @@ export function useInfiniteScroll(
 
   // Reset when source data changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setVisibleCount(pageSize);
   }, [totalItems, pageSize]);
 

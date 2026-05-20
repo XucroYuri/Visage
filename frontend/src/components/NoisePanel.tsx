@@ -1,26 +1,54 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ClusterInfo, PhotoInfo } from "../api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { PhotoInfo } from "../api";
+import { useAppContext } from "../context/AppContext";
 import { PhotoCard } from "./PhotoCard";
 import { PhotoGrid } from "./PhotoGrid";
 import { PhotoViewer } from "./PhotoViewer";
 
-interface NoisePanelProps {
-  noisePhotos: PhotoInfo[];
-  clusters: ClusterInfo[];
-  nextClusterId: number;
-  onAssign: (imagePath: string, toId: number) => void;
-  onBatchAssign: (imagePaths: string[], toId: number) => void;
-  mutating: boolean;
+export function NoisePanel() {
+  const ctx = useAppContext();
+  const {
+    ws,
+    mutating,
+    handleMove,
+    batchAssign,
+  } = ctx;
+
+  if (!ws) return null;
+
+  const { noise_photos: noisePhotos, clusters, next_cluster_id: nextClusterId } = ws;
+
+  return (
+    <NoisePanelInner
+      noisePhotos={noisePhotos}
+      clusters={clusters}
+      nextClusterId={nextClusterId}
+      mutating={mutating}
+      onAssign={(path, toId) => handleMove(path, -1, toId)}
+      onBatchAssign={batchAssign}
+    />
+  );
 }
 
-export function NoisePanel({
+// ── Inner component (receives stable props from context) ──
+
+interface NoisePanelInnerProps {
+  noisePhotos: PhotoInfo[];
+  clusters: import("../api").ClusterInfo[];
+  nextClusterId: number;
+  mutating: boolean;
+  onAssign: (imagePath: string, toId: number) => void;
+  onBatchAssign: (imagePaths: string[], toId: number) => void;
+}
+
+function NoisePanelInner({
   noisePhotos,
   clusters,
   nextClusterId,
+  mutating,
   onAssign,
   onBatchAssign,
-  mutating,
-}: NoisePanelProps) {
+}: NoisePanelInnerProps) {
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [showBatchMenu, setShowBatchMenu] = useState(false);
   const [viewerPhoto, setViewerPhoto] = useState<PhotoInfo | null>(null);
@@ -28,6 +56,7 @@ export function NoisePanel({
 
   // Reset selection when photos change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedPaths(new Set());
   }, [noisePhotos]);
 
@@ -50,7 +79,6 @@ export function NoisePanel({
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "a") {
-        // Only handle if noise panel is visible (check document focus or context)
         if (noisePhotos.length > 0) {
           e.preventDefault();
           setSelectedPaths(new Set(noisePhotos.map((p) => p.path)));
@@ -85,7 +113,6 @@ export function NoisePanel({
     (e: React.DragEvent, imagePath: string) => {
       e.dataTransfer.setData("text/plain", imagePath);
       e.dataTransfer.effectAllowed = "move";
-      // If dragging a selected photo, also drag all selected
       if (selectedPaths.has(imagePath) && selectedPaths.size > 1) {
         e.dataTransfer.setData(
           "application/json",
@@ -107,7 +134,7 @@ export function NoisePanel({
   );
 
   // Viewer prev/next
-  const flatPhotos = useMemo(() => noisePhotos, [noisePhotos]);
+  const flatPhotos = noisePhotos;
   const viewerIndex = viewerPhoto
     ? flatPhotos.findIndex((p) => p.path === viewerPhoto.path)
     : -1;
@@ -119,7 +146,7 @@ export function NoisePanel({
   const handleNext = useCallback(() => {
     if (viewerIndex < flatPhotos.length - 1)
       setViewerPhoto(flatPhotos[viewerIndex + 1]);
-  }, [viewerIndex, flatPhotos.length]);
+  }, [viewerIndex, flatPhotos]);
 
   const selectionCount = selectedPaths.size;
 

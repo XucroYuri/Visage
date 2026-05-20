@@ -86,6 +86,7 @@ export function PhotoCard({
         {selectionMode && (
           <div
             className="absolute top-2 left-2 z-10"
+            role="presentation"
             onClick={(e) => e.stopPropagation()}
           >
             <input
@@ -99,11 +100,19 @@ export function PhotoCard({
 
         {/* Image */}
         <div className="relative">
+          {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
           <img
             src={getImageUrl(photo.path)}
             alt={filename}
             className="w-full h-auto cursor-pointer block"
             onClick={handleImageClick}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleImageClick();
+              }
+            }}
+            tabIndex={0}
             loading="lazy"
             onLoad={(e) => {
               const img = e.currentTarget;
@@ -111,6 +120,7 @@ export function PhotoCard({
             }}
             draggable={false}
           />
+          {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
 
           {/* Face bounding boxes */}
           {imgSize &&

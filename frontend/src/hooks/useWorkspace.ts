@@ -41,6 +41,7 @@ export function useWorkspace(onToast: (toast: ToastMessage) => void) {
 
   // Initial load
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 

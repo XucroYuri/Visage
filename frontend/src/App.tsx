@@ -1,185 +1,67 @@
-import { useCallback, useRef, useState } from "react";
-import type { WorkspaceState } from "./api";
-import { ClusterDetail } from "./components/ClusterDetail";
+import { Suspense, lazy, useCallback } from "react";
 import { Header } from "./components/Header";
-import { NoisePanel } from "./components/NoisePanel";
 import { PhotoCard } from "./components/PhotoCard";
 import { PhotoGrid } from "./components/PhotoGrid";
-import { PipelineLoader } from "./components/PipelineLoader";
 import { Sidebar } from "./components/Sidebar";
 import { ToastContainer } from "./components/Toast";
+import { AppProvider, useAppContext } from "./context/AppContext";
 import { useKeyboard } from "./hooks/useKeyboard";
-import type { ToastMessage } from "./hooks/useWorkspace";
-import { useWorkspace } from "./hooks/useWorkspace";
 
-type ViewMode = "all" | "noise" | { clusterId: number };
+// ── Lazy-loaded view-level components ───────────────────
 
-/** Unique ID counter for toast items. */
-let toastIdCounter = 0;
+const ClusterDetail = lazy(() =>
+  import("./components/ClusterDetail").then((m) => ({ default: m.ClusterDetail })),
+);
+const NoisePanel = lazy(() =>
+  import("./components/NoisePanel").then((m) => ({ default: m.NoisePanel })),
+);
+const PipelineLoader = lazy(() =>
+  import("./components/PipelineLoader").then((m) => ({ default: m.PipelineLoader })),
+);
 
-function App() {
-  // ── Toast state ──────────────────────────────────────────
-  const [toasts, setToasts] = useState<
-    Array<{ id: number } & ToastMessage>
-  >([]);
+// ── Suspense fallback ────────────────────────────────────
 
-  const addToast = useCallback((toast: ToastMessage) => {
-    const id = ++toastIdCounter;
-    setToasts((prev) => [...prev, { id, ...toast }]);
-  }, []);
+function ViewFallback() {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+    </div>
+  );
+}
 
-  const dismissToast = useCallback((id: number) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
+// ── Inner app (rendered inside AppProvider to access context) ──
 
-  // ── Workspace hook ───────────────────────────────────────
+function AppInner() {
+  const ctx = useAppContext();
   const {
     ws,
     loading,
     error,
     mutating,
     load,
-    merge,
-    remove,
-    move,
-    batchAssign,
-    rename,
-    undoLast,
-    saveToDisk,
-  } = useWorkspace(addToast);
+    selectedCluster,
+    saving,
+    toasts,
+    dismissToast,
+    handleUndo,
+    handleSave,
+    handleCancelEdit,
+    handleMergeCancel,
+    view,
+    editingName,
+    mergeMode,
+  } = ctx;
 
-  // ── View / UI state ──────────────────────────────────────
-  const [view, setView] = useState<ViewMode>("all");
-  const [mergeMode, setMergeMode] = useState(false);
-  const [selectedForMerge, setSelectedForMerge] = useState<Set<number>>(
-    new Set(),
-  );
-  const [editingName, setEditingName] = useState<number | null>(null);
-  const [editValue, setEditValue] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  // Track whether we've detected pipeline mode (first load)
-  const hasLoadedOnce = useRef(false);
-
-  // ── Event handlers ───────────────────────────────────────
-
-  const handleWorkspaceReady = useCallback((_data: WorkspaceState) => {
-    // PipelineLoader already fetched the workspace, but useWorkspace
-    // manages its own state. Trigger a fresh load to sync.
+  // ── Pipeline mode handlers ──────────────────────────────
+  const handleWorkspaceReady = useCallback(() => {
     load();
   }, [load]);
 
-  const handleError = useCallback((_msg: string) => {
-    // Error from pipeline — useWorkspace handles errors from load()
+  const handlePipelineError = useCallback(() => {
+    // useWorkspace handles errors from load()
   }, []);
 
-  const handleSelectCluster = useCallback(
-    (id: number) => {
-      if (mergeMode) {
-        setSelectedForMerge((prev) => {
-          const next = new Set(prev);
-          if (next.has(id)) next.delete(id);
-          else next.add(id);
-          return next;
-        });
-      } else {
-        setView({ clusterId: id });
-      }
-    },
-    [mergeMode],
-  );
-
-  const handleExecuteMerge = useCallback(async () => {
-    const ids = Array.from(selectedForMerge);
-    if (ids.length < 2) return;
-    const toId = ids[0];
-    const fromIds = ids.slice(1);
-    await merge(fromIds, toId);
-    setSelectedForMerge(new Set());
-    setMergeMode(false);
-    setView({ clusterId: toId });
-  }, [selectedForMerge, merge]);
-
-  const handleRemove = useCallback(
-    async (clusterId: number, imagePath: string) => {
-      const updated = await remove(clusterId, imagePath);
-      // If cluster disappeared (merged or empty), navigate back to all
-      if (updated && !updated.clusters.find((c) => c.id === clusterId)) {
-        setView("all");
-      }
-    },
-    [remove],
-  );
-
-  const handleMove = useCallback(
-    async (imagePath: string, fromId: number, toId: number) => {
-      await move(imagePath, fromId, toId);
-    },
-    [move],
-  );
-
-  const handleRename = useCallback(async () => {
-    if (editingName === null || !editValue.trim()) {
-      setEditingName(null);
-      return;
-    }
-    await rename(editingName, editValue.trim());
-    setEditingName(null);
-  }, [editingName, editValue, rename]);
-
-  const handleStartEdit = useCallback((id: number, name: string) => {
-    setEditingName(id);
-    setEditValue(name);
-  }, []);
-
-  const handleCancelEdit = useCallback(() => {
-    setEditingName(null);
-  }, []);
-
-  const handleMergeCancel = useCallback(() => {
-    setMergeMode(false);
-    setSelectedForMerge(new Set());
-  }, []);
-
-  const handleViewAll = useCallback(() => {
-    setView("all");
-    setMergeMode(false);
-    setSelectedForMerge(new Set());
-  }, []);
-
-  const handleViewNoise = useCallback(() => {
-    setView("noise");
-    setMergeMode(false);
-    setSelectedForMerge(new Set());
-  }, []);
-
-  const handleToggleMergeMode = useCallback(() => {
-    setMergeMode(true);
-    setSelectedForMerge(new Set());
-    setView("all");
-  }, []);
-
-  const handleUndo = useCallback(async () => {
-    await undoLast();
-  }, [undoLast]);
-
-  const handleSave = useCallback(async () => {
-    setSaving(true);
-    try {
-      await saveToDisk();
-    } finally {
-      setSaving(false);
-    }
-  }, [saveToDisk]);
-
-  const handleDropOnCluster = useCallback(
-    async (imagePath: string, clusterId: number) => {
-      await move(imagePath, -1, clusterId);
-    },
-    [move],
-  );
-
-  // ── Keyboard shortcuts ───────────────────────────────────
+  // ── Keyboard shortcuts ──────────────────────────────────
   useKeyboard({
     onUndo: ws?.can_undo ? handleUndo : undefined,
     onSave: handleSave,
@@ -192,23 +74,15 @@ function App() {
     },
   });
 
-  // ── Loading / Error states ───────────────────────────────
-
-  // Show pipeline loader when the workspace hasn't loaded yet
-  // and we're in pipeline mode (SSE is active).
-  // useWorkspace does an initial fetchWorkspace() on mount.
-  // If that succeeds immediately (no pipeline), we show the app.
-  // If it fails, we fall into pipeline mode.
-  if (loading && !ws && !hasLoadedOnce.current) {
-    // First attempt failed — show pipeline loader
-    if (error) {
-      hasLoadedOnce.current = true;
-    }
+  // ── Loading / Error states ──────────────────────────────
+  if (loading && !ws && !error) {
     return (
-      <PipelineLoader
-        onReady={handleWorkspaceReady}
-        onError={handleError}
-      />
+      <Suspense fallback={<ViewFallback />}>
+        <PipelineLoader
+          onReady={handleWorkspaceReady}
+          onError={handlePipelineError}
+        />
+      </Suspense>
     );
   }
 
@@ -233,11 +107,6 @@ function App() {
 
   if (!ws) return null;
 
-  const selectedCluster =
-    typeof view === "object" && "clusterId" in view
-      ? ws.clusters.find((c) => c.id === view.clusterId) ?? null
-      : null;
-
   return (
     <div className="flex flex-col h-screen">
       {/* Header */}
@@ -253,60 +122,18 @@ function App() {
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <Sidebar
-          ws={ws}
-          view={view}
-          mergeMode={mergeMode}
-          selectedForMerge={selectedForMerge}
-          editingName={editingName}
-          editValue={editValue}
-          mutating={mutating}
-          onSelectCluster={handleSelectCluster}
-          onViewAll={handleViewAll}
-          onViewNoise={handleViewNoise}
-          onToggleMergeMode={handleToggleMergeMode}
-          onCancelMerge={handleMergeCancel}
-          onExecuteMerge={handleExecuteMerge}
-          onStartEdit={handleStartEdit}
-          onEditChange={setEditValue}
-          onSaveEdit={handleRename}
-          onCancelEdit={handleCancelEdit}
-          onDropOnCluster={handleDropOnCluster}
-        />
+        <Sidebar />
 
         {/* Main content */}
         <main className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
           {selectedCluster ? (
-            <ClusterDetail
-              cluster={selectedCluster}
-              clusters={ws.clusters}
-              onRemove={(path) => handleRemove(selectedCluster.id, path)}
-              onMove={(path, toId) =>
-                handleMove(path, selectedCluster.id, toId)
-              }
-              onBack={handleViewAll}
-              onStartRename={() =>
-                handleStartEdit(
-                  selectedCluster.id,
-                  selectedCluster.name,
-                )
-              }
-              editing={editingName === selectedCluster.id}
-              editValue={editValue}
-              onEditChange={setEditValue}
-              onSaveEdit={handleRename}
-              onCancelEdit={handleCancelEdit}
-            />
+            <Suspense fallback={<ViewFallback />}>
+              <ClusterDetail />
+            </Suspense>
           ) : view === "noise" ? (
-            <NoisePanel
-              noisePhotos={ws.noise_photos}
-              clusters={ws.clusters}
-              nextClusterId={ws.next_cluster_id}
-              onAssign={(path, toId) => handleMove(path, -1, toId)}
-              onBatchAssign={batchAssign}
-              mutating={mutating}
-            />
+            <Suspense fallback={<ViewFallback />}>
+              <NoisePanel />
+            </Suspense>
           ) : (
             <div>
               <h2 className="text-lg font-semibold text-gray-700 mb-4">
@@ -333,4 +160,12 @@ function App() {
   );
 }
 
-export default App;
+// ── Root app ─────────────────────────────────────────────
+
+export default function App() {
+  return (
+    <AppProvider>
+      <AppInner />
+    </AppProvider>
+  );
+}

@@ -1,62 +1,60 @@
-import { useState, useCallback } from "react";
-import type { ClusterInfo, PhotoInfo } from "../api";
+import { useState, useCallback, useMemo } from "react";
+import type { PhotoInfo } from "../api";
+import { useAppContext } from "../context/AppContext";
 import { PhotoCard } from "./PhotoCard";
 import { PhotoGrid } from "./PhotoGrid";
 import { PhotoViewer } from "./PhotoViewer";
 
-interface ClusterDetailProps {
-  cluster: ClusterInfo;
-  clusters: ClusterInfo[];
-  onRemove: (imagePath: string) => void;
-  onMove: (imagePath: string, toId: number) => void;
-  onBack: () => void;
-  onStartRename: () => void;
-  editing: boolean;
-  editValue: string;
-  onEditChange: (value: string) => void;
-  onSaveEdit: () => void;
-  onCancelEdit: () => void;
-}
+export function ClusterDetail() {
+  const ctx = useAppContext();
+  const {
+    ws,
+    selectedCluster,
+    editingName,
+    editValue,
+    setEditValue,
+    handleStartEdit,
+    handleCancelEdit,
+    handleRename,
+    handleRemove,
+    handleMove,
+    handleViewAll,
+  } = ctx;
 
-export function ClusterDetail({
-  cluster,
-  clusters,
-  onRemove,
-  onMove,
-  onBack,
-  onStartRename,
-  editing,
-  editValue,
-  onEditChange,
-  onSaveEdit,
-  onCancelEdit,
-}: ClusterDetailProps) {
   const [viewerPhoto, setViewerPhoto] = useState<PhotoInfo | null>(null);
 
-  const otherClusters = clusters.filter((c) => c.id !== cluster.id);
+  const cluster = selectedCluster;
+  const editing = editingName === cluster?.id;
+  const otherClusters = useMemo(
+    () => (ws && cluster ? ws.clusters.filter((c) => c.id !== cluster.id) : []),
+    [ws, cluster],
+  );
 
-  const viewerIndex = viewerPhoto
-    ? cluster.photos.findIndex((p) => p.path === viewerPhoto.path)
-    : -1;
+  const viewerIndex =
+    viewerPhoto && cluster
+      ? cluster.photos.findIndex((p) => p.path === viewerPhoto.path)
+      : -1;
 
   const handlePrev = useCallback(() => {
-    if (viewerIndex > 0) {
+    if (viewerIndex > 0 && cluster) {
       setViewerPhoto(cluster.photos[viewerIndex - 1]);
     }
-  }, [viewerIndex, cluster.photos]);
+  }, [viewerIndex, cluster]);
 
   const handleNext = useCallback(() => {
-    if (viewerIndex < cluster.photos.length - 1) {
+    if (cluster && viewerIndex < cluster.photos.length - 1) {
       setViewerPhoto(cluster.photos[viewerIndex + 1]);
     }
-  }, [viewerIndex, cluster.photos.length]);
+  }, [viewerIndex, cluster]);
+
+  if (!cluster || !ws) return null;
 
   return (
     <div>
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">
         <button
-          onClick={onBack}
+          onClick={handleViewAll}
           className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
         >
           &#8592; All
@@ -64,22 +62,29 @@ export function ClusterDetail({
         {editing ? (
           <input
             value={editValue}
-            onChange={(e) => onEditChange(e.target.value)}
+            onChange={(e) => setEditValue(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") onSaveEdit();
-              if (e.key === "Escape") onCancelEdit();
+              if (e.key === "Enter") handleRename();
+              if (e.key === "Escape") handleCancelEdit();
             }}
             className="text-xl font-semibold border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400"
-            autoFocus
           />
         ) : (
+          /* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */
           <h2
-            onClick={onStartRename}
+            onClick={() => handleStartEdit(cluster.id, cluster.name)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                handleStartEdit(cluster.id, cluster.name);
+              }
+            }}
+            tabIndex={0}
             className="text-xl font-semibold text-gray-900 cursor-pointer hover:text-blue-600 transition-colors"
             title="Click to rename"
           >
             {cluster.name}
           </h2>
+          /* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */
         )}
         <span className="text-sm text-gray-400">
           {cluster.photo_count} photos &middot; confidence{" "}
@@ -101,8 +106,8 @@ export function ClusterDetail({
             <div key={photo.path}>
               <PhotoCard
                 photo={photo}
-                onRemove={() => onRemove(photo.path)}
-                onMove={(toId) => onMove(photo.path, toId)}
+                onRemove={() => handleRemove(cluster.id, photo.path)}
+                onMove={(toId) => handleMove(photo.path, cluster.id, toId)}
                 otherClusters={otherClusters}
                 onViewFull={() => setViewerPhoto(photo)}
               />

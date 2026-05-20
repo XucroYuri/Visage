@@ -69,9 +69,20 @@ export function ClusterRow({
     if (e.key === "Escape") onCancelEdit();
   };
 
+  const handleRowKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onSelect();
+    }
+  };
+
   return (
     <div
       onClick={onSelect}
+      onKeyDown={handleRowKeyDown}
+      role="option"
+      aria-selected={selected}
+      tabIndex={0}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -113,7 +124,6 @@ export function ClusterRow({
             onKeyDown={handleKeyDown}
             onClick={(e) => e.stopPropagation()}
             className="text-sm font-medium w-full border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
-            autoFocus
           />
         ) : (
           <div
@@ -121,6 +131,15 @@ export function ClusterRow({
               e.stopPropagation();
               onStartEdit();
             }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.stopPropagation();
+                onStartEdit();
+              }
+            }}
+            role="button"
+            tabIndex={0}
             className="text-sm font-medium text-gray-800 truncate cursor-text hover:text-blue-600 transition-colors"
             title="Click to rename"
           >
