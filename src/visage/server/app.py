@@ -12,7 +12,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from visage.backends import get_backend
@@ -246,7 +246,27 @@ def create_app(input_dir: str, config: VisageConfig | None = None) -> FastAPI:
     # Serve React static files (production build)
     static_dir = Path(__file__).parent / "static"
     if static_dir.exists() and (static_dir / "index.html").exists():
-        app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+        # Mount static assets directory (JS, CSS bundles)
+        assets_dir = static_dir / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+        # Root path serves index.html directly
+        @app.get("/", include_in_schema=False)
+        async def serve_root():
+            return FileResponse(str(static_dir / "index.html"))
+
+        # SPA fallback: serve index.html for all non-API, non-asset routes.
+        # API routes (/api/*) take priority because they are registered earlier
+        # and are more specific than the {full_path:path} catch-all.
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def serve_spa(full_path: str):
+            file_path = static_dir / full_path
+            # Serve root-level static files (favicon.svg, icons.svg)
+            if file_path.exists() and file_path.is_file():
+                return FileResponse(str(file_path))
+            # Everything else → SPA index.html
+            return FileResponse(str(static_dir / "index.html"))
 
     return app
 
