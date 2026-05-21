@@ -79,7 +79,6 @@ export default function App() {
   useDarkMode();
 
   // Responsive layout
-  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const batchMode = useUIStore((s) => s.batchMode);
   const selectedPhotoPaths = useUIStore((s) => s.selectedPhotoPaths);
   const setSelectedPhotoPaths = useUIStore((s) => s.setSelectedPhotoPaths);

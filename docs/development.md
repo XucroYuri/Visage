@@ -25,12 +25,13 @@ git clone https://github.com/user/Visage.git
 cd Visage
 
 # 安装全部依赖 (推荐)
-uv sync --extra dev --extra insightface --extra web
+uv sync --extra dev --extra insightface --extra web --extra vector
 
 # 或者按需安装
 uv sync --extra dev           # 仅开发工具 (pytest, ruff)
 uv sync --extra web           # 仅 Web UI (fastapi, uvicorn)
 uv sync --extra insightface   # 仅 InsightFace 后端
+uv sync --extra vector         # 仅 FAISS 向量索引
 ```
 
 ### 验证安装
@@ -51,10 +52,21 @@ Visage/
 │       ├── backends.py        # 嵌入后端抽象 + 实现
 │       ├── cache.py           # SQLite 嵌入缓存
 │       ├── cli.py             # CLI 入口 (argparse)
-│       ├── cluster.py         # 聚类算法 (DBSCAN/HDBSCAN + 合并)
+│       ├── cluster/           # 聚类包 (Phase 2)
+│       │   ├── core.py        # DBSCAN/HDBSCAN + 合并 (原 cluster.py)
+│       │   ├── incremental.py # 增量聚类 (ANN 投票)
+│       │   ├── optimizer.py   # 全局优化器 (漂移检测)
+│       │   └── engine.py      # 聚类引擎编排
 │       ├── config.py          # 配置 (dataclass + TOML 加载)
 │       ├── detector.py        # Vision 框架人脸检测
+│       ├── embedding/         # 嵌入服务包 (Phase 2)
+│       │   ├── backend.py     # 后端工厂 + GPU 检测
+│       │   ├── batcher.py     # 请求批处理器
+│       │   ├── gpu.py         # 设备检测 (CUDA/MPS/CPU)
+│       │   └── service.py     # 独立 FastAPI 嵌入服务
 │       ├── embedder.py        # 嵌入生成 (批量)
+│       ├── ensemble/          # 集成分类器包 (Phase 2)
+│       │   └── classifier.py  # KNN + SVM 加权投票
 │       ├── head_features.py   # 头部特征提取
 │       ├── heic.py            # HEIC/HEIF 支持
 │       ├── hwdetect.py        # 硬件检测 + 自动推荐
@@ -62,11 +74,17 @@ Visage/
 │       ├── organizer.py       # 文件整理 (复制/移动)
 │       ├── pipeline.py        # 5阶段流水线编排
 │       ├── progress.py        # 进度显示 (rich)
-│       ├── quality.py         # 人脸质量评估
+│       ├── quality/           # 质量评估包 (Phase 2)
+│       │   ├── core.py        # 人脸质量评估 (原 quality.py)
+│       │   └── scorer.py      # 聚类质量评分 + Best-Face 选择
 │       ├── scanner.py         # 图片文件扫描
+│       ├── vector/            # FAISS 向量索引包 (Phase 2)
+│       │   ├── index.py       # FAISS 索引封装
+│       │   └── metadata.py    # SQLite 元数据存储
 │       └── server/
 │           ├── app.py         # FastAPI 应用 + SSE
 │           ├── routes.py      # API 路由
+│           ├── search.py      # 人脸搜索逻辑 (Phase 2)
 │           └── workspace.py   # 内存工作区 (状态+修改+撤销)
 ├── frontend/
 │   └── src/
@@ -88,7 +106,7 @@ Visage/
 │       ├── hooks/
 │       ├── store/             # Zustand 状态管理
 │       └── test/
-├── tests/                     # Python 测试 (364 个)
+├── tests/                     # Python 测试 (513 个)
 └── docs/                      # 文档
 ```
 
@@ -143,7 +161,17 @@ flowchart LR
 | `detector.py` | macOS Vision 人脸检测 | `detect_faces_batch()` |
 | `backends.py` | 嵌入后端协议 + 实现 | `get_backend()` |
 | `embedder.py` | 批量生成嵌入 + 缓存查询 | `generate_embeddings_batch()` |
-| `cluster.py` | 向量提取 + 聚类 + 置信度 + 合并 | `cluster_faces()`, `merge_clusters()` |
+| `cluster/core.py` | 向量提取 + 聚类 + 置信度 + 合并 | `cluster_faces()`, `merge_clusters()` |
+| `cluster/incremental.py` | 增量聚类 (ANN 投票 + 置信度) | `IncrementalAssigner` |
+| `cluster/optimizer.py` | 全局优化器 (漂移检测) | `GlobalOptimizer` |
+| `cluster/engine.py` | 聚类引擎编排 (epoch 追踪) | `ClusterEngine` |
+| `embedding/service.py` | 独立嵌入服务 (FastAPI) | `create_app()` |
+| `embedding/batcher.py` | 请求批处理器 (优先级队列) | `RequestBatcher` |
+| `vector/index.py` | FAISS 向量索引 (增删查) | `VectorIndex` |
+| `vector/metadata.py` | SQLite 元数据 (软删除) | `MetadataStore` |
+| `quality/scorer.py` | 聚类质量评分 + Best-Face | `select_best_face()` |
+| `ensemble/classifier.py` | 集成分类器 (KNN+SVM) | `EnsembleClassifier` |
+| `server/search.py` | 人脸搜索 (余弦相似度) | `search_faces()` |
 | `organizer.py` | 构建组织计划 + 执行复制/移动 | `build_organize_plan()`, `execute_organize_plan()` |
 | `pipeline.py` | 5阶段流水线编排 | `run_pipeline()` |
 | `config.py` | TOML 加载 + 硬件自适应 | `build_config()` |

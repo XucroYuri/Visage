@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { useVirtualScroll } from "../hooks/useVirtualScroll";
 
@@ -60,7 +60,6 @@ export function PhotoGrid({
   const {
     parentRef,
     virtualizer,
-    rowCount,
   } = useVirtualScroll({
     count: useVirtual ? totalCount : 0,
     columns,
@@ -119,20 +118,6 @@ export function PhotoGrid({
   }
 
   // ── Simple CSS Grid (non-virtualized, with infinite scroll) ──
-  const getGridItem = useCallback((child: ReactNode, index: number) => {
-    const start = index % columns === 0;
-    return (
-      <div
-        key={index}
-        style={{
-          gridColumnStart: start ? undefined : undefined,
-        }}
-      >
-        {child}
-      </div>
-    );
-  }, [columns]);
-
   return (
     <>
       <div

@@ -251,6 +251,45 @@ visage <INPUT_DIR> [OPTIONS]
 
 所有字段可选，省略则使用配置默认值。
 
+
+
+### POST /api/search/face
+
+人脸搜索 — 根据查询嵌入向量在已有聚类中查找最相似的人脸。
+
+**请求体:**
+```json
+{
+  "embedding": [0.1, 0.2, ...],
+  "top_k": 20,
+  "min_score": 0.5,
+  "cluster_id": null
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `embedding` | float[] | 查询嵌入向量 (128 或 512 维) |
+| `top_k` | int | 返回前 K 个结果 (默认 20) |
+| `min_score` | float | 最低相似度阈值 (默认 0.5) |
+| `cluster_id` | int? | 限定搜索范围的聚类 ID (可选) |
+
+**响应:**
+```json
+{
+  "results": [
+    {
+      "image_path": "/path/to/photo.jpg",
+      "face_index": 0,
+      "score": 0.92,
+      "cluster_id": 3,
+      "face_box": {"top": 10, "right": 110, "bottom": 110, "left": 10}
+    }
+  ],
+  "total": 15
+}
+```
+
 ### GET /api/config
 
 获取当前配置。
@@ -265,6 +304,33 @@ data: {"phase": 2, "message": "2/5 Detection — 80/100", "done": true}
 ```
 
 ---
+
+---
+
+## 嵌入服务 CLI Embedding Service CLI
+
+Phase 2 新增独立嵌入服务进程，支持批量嵌入请求和 GPU 加速。
+
+```bash
+# 启动嵌入服务 (默认端口 8788)
+visage-engine
+
+# 指定端口
+visage-engine --port 9090
+
+# 查看服务状态
+curl http://localhost:8788/status
+```
+
+### 端点 Endpoints
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/health` | GET | 健康检查 |
+| `/status` | GET | 服务状态 (设备、后端、队列深度) |
+| `/embed` | POST | 单张图片嵌入 |
+| `/embed/batch` | POST | 批量图片嵌入 |
+| `/hotswap` | POST | 热切换嵌入后端 |
 
 ## 数据模型 Data Model
 

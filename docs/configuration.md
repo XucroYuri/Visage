@@ -53,6 +53,18 @@ merge_threshold = 0.80                   # 合并阈值 (0~1)
 small_merge_threshold = 0.75             # 小聚类宽松阈值
 min_reliable_size = 10                   # 可靠聚类最小大小
 
+
+[vector]
+enabled = true                          # 启用 FAISS 向量索引
+index_type = "auto"                     # auto, flat, 或 ivf
+nlist = 100                             # IVF cell 数量
+
+[ensemble]
+enabled = false                         # 启用集成分类器
+reject_threshold = 0.5                  # 拒绝阈值 (0~1)
+knn_k = 5                               # KNN 邻居数
+svm_c = 1.0                             # SVM 正则化参数
+
 [output]
 copy_mode = true                         # true=复制, false=移动
 folder_prefix = "person_"                # 文件夹前缀
@@ -182,9 +194,33 @@ flowchart TB
 - `small_merge_threshold`: 当其中一个聚类小于 `min_reliable_size` 时使用此宽松阈值
 - 设为 0.0 可禁用合并
 
-### [output] — 输出
+### 
+[vector]
+enabled = true                          # 启用 FAISS 向量索引
+index_type = "auto"                     # auto, flat, 或 ivf
+nlist = 100                             # IVF cell 数量
+
+[ensemble]
+enabled = false                         # 启用集成分类器
+reject_threshold = 0.5                  # 拒绝阈值 (0~1)
+knn_k = 5                               # KNN 邻居数
+svm_c = 1.0                             # SVM 正则化参数
+
+[output] — 输出
 
 ```toml
+
+[vector]
+enabled = true                          # 启用 FAISS 向量索引
+index_type = "auto"                     # auto, flat, 或 ivf
+nlist = 100                             # IVF cell 数量
+
+[ensemble]
+enabled = false                         # 启用集成分类器
+reject_threshold = 0.5                  # 拒绝阈值 (0~1)
+knn_k = 5                               # KNN 邻居数
+svm_c = 1.0                             # SVM 正则化参数
+
 [output]
 copy_mode = true
 folder_prefix = "person_"
@@ -203,6 +239,49 @@ include_no_faces = false
 - **folder_prefix**: 输出文件夹名前缀，`person_` 产生 `person_00/`, `person_01/`, ...
 - **include_unclustered**: 将未聚类照片放入 `_unclustered/` 文件夹
 - **include_no_faces**: 将无脸照片放入 `_no_faces/` 文件夹
+
+### [vector] — FAISS 向量索引 (Phase 2)
+
+```toml
+[vector]
+enabled = true
+index_type = "auto"
+nlist = 100
+```
+
+| 键 | 类型 | 可选值 | 默认值 | 说明 |
+|----|------|--------|--------|------|
+| `enabled` | bool | - | true | 启用 FAISS 向量索引 |
+| `index_type` | string | `auto`, `flat`, `ivf` | `auto` | 索引类型 (auto: 自动按规模选择) |
+| `nlist` | int | ≥ 1 | 100 | IVF cell 数量 (仅 IVF 模式) |
+
+- **auto**: 向量数 < 10,000 时使用 FlatIndex (精确搜索)，超过则自动切换 IVFFlat
+- **flat**: 暴力搜索，适合小规模数据集 (< 10K)
+- **ivf**: 倒排索引，适合大规模数据集 (> 10K)
+
+### [ensemble] — 集成分类器 (Phase 2)
+
+```toml
+[ensemble]
+enabled = false
+reject_threshold = 0.5
+knn_k = 5
+svm_c = 1.0
+```
+
+| 键 | 类型 | 范围 | 默认值 | 说明 |
+|----|------|------|--------|------|
+| `enabled` | bool | - | false | 启用集成分类器 |
+| `reject_threshold` | float | 0.0 ~ 1.0 | 0.5 | 低于此置信度拒绝分类 |
+| `knn_k` | int | ≥ 1 | 5 | KNN 邻居数 |
+| `svm_c` | float | > 0 | 1.0 | SVM 正则化参数 |
+
+集成分类器组合三种子分类器的投票结果:
+1. **Cosine KNN** — 余弦相似度 K 近邻
+2. **Euclidean KNN** — 欧氏距离 K 近邻
+3. **SVM (RBF)** — 支持向量机
+
+权重根据各分类器在训练集上的准确率动态调整。
 
 ## 场景配置文件 Examples
 

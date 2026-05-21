@@ -302,3 +302,75 @@ flowchart LR
    最低优先级
  代码默认值 (VisageConfig dataclass)
 ```
+
+
+## Phase 2: Real-time Engine Architecture
+
+Phase 2 evolves Visage from a batch pipeline to a persistent engine with incremental processing, vector search, and ensemble classification.
+
+```mermaid
+graph TB
+    subgraph "Frontend (React + Vite)"
+        UI["Web UI<br/>Cluster Review"]
+        SearchUI["Face Search<br/>Similarity Results"]
+    end
+
+    subgraph "Python Engine Service"
+        API["FastAPI<br/>REST + SSE"]
+
+        subgraph "Embedding Service"
+            ESP["HTTP Server<br/>GPU Detection"]
+            Batch["Request Batcher<br/>Priority Queue"]
+        end
+
+        subgraph "Vector Storage"
+            FAISS["FAISS Index<br/>IVFFlat / Flat"]
+            META["SQLite<br/>Face Metadata"]
+        end
+
+        subgraph "Clustering Engine"
+            INC["Incremental Assigner<br/>ANN + Majority Vote"]
+            OPT["Global Optimizer<br/>HDBSCAN + Drift Detection"]
+        end
+
+        subgraph "Quality & Classification"
+            SCORER["Quality Scorer<br/>Sharpness + Size + Quality"]
+            ENSEMBLE["Ensemble Classifier<br/>KNN + SVM + Cosine"]
+        end
+    end
+
+    UI --> API
+    SearchUI --> API
+    API --> ESP
+    API --> INC
+    ESP <--> FAISS
+    ESP <--> META
+    INC <--> FAISS
+    OPT --> INC
+    ENSEMBLE --> INC
+    SCORER --> API
+
+    style FAISS fill:#4a6,color:#fff
+    style API fill:#46a,color:#fff
+    style INC fill:#a6a,color:#fff
+    style ENSEMBLE fill:#a66,color:#fff
+```
+
+### New Subsystems
+
+| Package | Purpose |
+|---------|---------|
+| `src/visage/embedding/` | Persistent embedding service with GPU detection, request batching, backend hot-swap |
+| `src/visage/vector/` | FAISS vector index (IVFFlat) with CRUD, persistence, soft-delete + SQLite metadata store |
+| `src/visage/cluster/` | Incremental clustering engine: ANN-based assignment + periodic HDBSCAN drift correction |
+| `src/visage/quality/` | Composite quality scoring + best-face selection per cluster |
+| `src/visage/ensemble/` | Three-classifier ensemble (Cosine KNN + Euclidean KNN + SVM) with weighted voting |
+| `src/visage/server/search.py` | Face search business logic with ranking, pagination, cluster filtering |
+
+### Key Design Decisions
+
+1. **Embedding Service** runs as a standalone HTTP process (`visage-engine` CLI), enabling GPU persistence across pipeline runs
+2. **FAISS IVFFlat** chosen for 10K-100K scale — flat index for small collections, IVF auto-activates when n > 10×nlist
+3. **Incremental Clustering** uses a two-tier strategy: fast ANN assignment for new faces + periodic global HDBSCAN for drift correction
+4. **Ensemble Classifier** only activates on low-confidence predictions (~20% of cases), keeping the hot path fast
+5. **Quality Scorer** combines face quality, relative size, and edge detection for best-face selection

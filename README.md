@@ -107,6 +107,12 @@ flowchart TB
 | **📷 HEIC 支持** | iPhone 照片原生支持 |
 | **🔒 安全复制** | 默认复制不修改原文件，可选移动 |
 | **🔄 检查点恢复** | 中断后可续跑 |
+| **🔍 人脸搜索** | 根据嵌入向量在聚类中搜索相似人脸 |
+| **⚡ FAISS 向量索引** | 高效向量检索，支持增量添加和软删除 |
+| **📈 增量聚类** | ANN 投票 + 漂移检测，新图片无需全量重聚类 |
+| **🏆 质量评分** | 自动选择每个聚类的最佳人脸 |
+| **🤖 集成分类器** | KNN + SVM 加权投票，提高分类准确度 |
+| **🖥️ 嵌入服务** | 独立嵌入进程，支持 GPU 加速和后端热切换 |
 
 ## 使用场景 Use Cases
 
@@ -210,14 +216,22 @@ flowchart TB
         P1[scanner.py — 文件扫描]
         P2[detector.py — Vision 人脸检测]
         P3[embedder.py — 特征提取]
-        P4[cluster.py — DBSCAN/HDBSCAN]
+        P4[cluster/ — DBSCAN/HDBSCAN + 增量]
         P5[organizer.py — 文件整理]
+    end
+
+    subgraph Phase 2 Engine
+        E1[embedding/ — 嵌入服务]
+        E2[vector/ — FAISS 索引]
+        E3[ensemble/ — 集成分类器]
+        E4[quality/ — 质量评分]
     end
 
     subgraph Web Server
         S[app.py — FastAPI 服务]
         R[routes.py — API 路由]
         W[workspace.py — 内存状态]
+        SE[search.py — 人脸搜索]
     end
 
     subgraph Frontend
@@ -226,16 +240,21 @@ flowchart TB
         ST[store/ — 状态管理]
     end
 
-    P1 → P2 → P3 → P4 → P5
+    P1 --> P2 --> P3 --> P4 --> P5
+    P3 -.-> E1
+    E1 --> E2
+    P4 --> E3
+    P4 --> E4
+    E2 --> SE
     P4 -.->|web UI| W
-    W → R → F
+    W --> R --> F
     F → C
     F → ST
 ```
 
 ## 开发 Development
 
-- **运行测试**: `uv run pytest tests/` (364 个测试)
+- **运行测试**: `uv run pytest tests/` (513 个测试)
 - **前端测试**: `cd frontend && npx vitest run` (91 个测试)
 - **代码检查**: `uv run ruff check src/`
 - **前端构建**: `cd frontend && npm run build`
