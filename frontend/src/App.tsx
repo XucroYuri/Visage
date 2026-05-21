@@ -34,6 +34,12 @@ const NoisePanel = lazy(() =>
 const PipelineLoader = lazy(() =>
   import("./components/PipelineLoader").then((m) => ({ default: m.PipelineLoader })),
 );
+const AutoAlbums = lazy(() =>
+  import("./components/AutoAlbums").then((m) => ({ default: m.AutoAlbums })),
+);
+const SearchPage = lazy(() =>
+  import("./components/SearchPage").then((m) => ({ default: m.SearchPage })),
+);
 
 // ── Dark mode manager ──────────────────────────────────────────
 
@@ -393,6 +399,8 @@ export default function App() {
               />
               <Route path="/cluster/:id" element={<ClusterDetail />} />
               <Route path="/noise" element={<NoisePanel />} />
+              <Route path="/albums" element={<AutoAlbums />} />
+              <Route path="/search" element={<SearchPage />} />
             </Routes>
           </Suspense>
         </main>

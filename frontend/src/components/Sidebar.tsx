@@ -127,6 +127,28 @@ export function Sidebar({ ctx }: { ctx: SidebarContext }) {
           >
             &#10067;
           </button>
+          <button
+            onClick={() => navigate("/albums")}
+            className={`w-10 h-10 flex items-center justify-center rounded-lg text-lg transition-colors ${
+              location.pathname === "/albums"
+                ? "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                : "hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-400"
+            }`}
+            title="Auto Albums"
+          >
+            📂
+          </button>
+          <button
+            onClick={() => navigate("/search")}
+            className={`w-10 h-10 flex items-center justify-center rounded-lg text-lg transition-colors ${
+              location.pathname === "/search"
+                ? "bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400"
+                : "hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-400"
+            }`}
+            title="Search"
+          >
+            🔍
+          </button>
         </nav>
       </aside>
     );
@@ -179,6 +201,29 @@ export function Sidebar({ ctx }: { ctx: SidebarContext }) {
               {ws.noise_photos.length}
             </span>
           )}
+        </button>
+
+        {/* Phase 3 navigation */}
+        <button
+          onClick={() => navigate("/albums")}
+          className={`w-full text-left px-3 py-2 rounded text-sm font-medium transition-colors ${
+            location.pathname === "/albums"
+              ? "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+              : "hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300"
+          }`}
+        >
+          📂 Auto Albums
+        </button>
+
+        <button
+          onClick={() => navigate("/search")}
+          className={`w-full text-left px-3 py-2 rounded text-sm font-medium transition-colors ${
+            location.pathname === "/search"
+              ? "bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400"
+              : "hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300"
+          }`}
+        >
+          🔍 Search
         </button>
 
         {/* Merge mode toggle */}
