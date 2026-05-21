@@ -7,8 +7,10 @@ on:
     branches: [main]
 
 jobs:
-  lint-and-test:
-    runs-on: macos-latest
+  # ── Python lint + test (macOS, full suite) ────────────────────
+  test-macos:
+    name: "macOS (full suite)"
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
@@ -21,8 +23,85 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras
 
-      - name: Lint
+      - name: Lint (ruff)
         run: uv run ruff check src/ tests/
 
-      - name: Test
+      - name: Test (pytest, full suite)
         run: uv run pytest tests/ -x -q
+
+  # ── Python lint + test (Ubuntu, skip vision) ─────────────────
+  test-linux:
+    name: "Ubuntu (skip vision)"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-glx libglib2.0-0
+
+      - name: Install Python dependencies
+        run: uv sync --all-extras
+
+      - name: Lint (ruff)
+        run: uv run ruff check src/ tests/
+
+      - name: Test (pytest, skip vision marker)
+        run: uv run pytest tests/ -x -q -m "not vision"
+
+  # ── Python lint + test (Windows, skip vision) ────────────────
+  test-windows:
+    name: "Windows (skip vision)"
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Lint (ruff)
+        run: uv run ruff check src/ tests/
+
+      - name: Test (pytest, skip vision marker)
+        run: uv run pytest tests/ -x -q -m "not vision"
+
+  # ── Frontend lint + test + build ─────────────────────────────
+  test-frontend:
+    name: "Frontend (lint + test + build)"
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --legacy-peer-deps
+
+      - name: TypeScript check
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Test (vitest)
+        working-directory: frontend
+        run: npx vitest run
+
+      - name: Build (vite)
+        working-directory: frontend
+        run: npm run build

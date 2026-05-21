@@ -5,6 +5,16 @@ import pytest
 
 from visage.models import DetectedFace, FaceBox, ImageResult
 
+# ── Custom pytest markers ───────────────────────────────────────────
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "vision: requires macOS Vision framework")
+    config.addinivalue_line("markers", "scrfd: requires insightface package")
+    config.addinivalue_line("markers", "yunet: requires opencv with FaceDetectorYN")
+    config.addinivalue_line("markers", "desktop: requires Tauri desktop runtime")
+
+
 # ── Seed for reproducibility ──────────────────────────────────────
 np.random.seed(42)
 
