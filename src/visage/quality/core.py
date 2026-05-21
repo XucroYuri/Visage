@@ -6,7 +6,7 @@ import logging
 
 import numpy as np
 
-from .models import FaceBox
+from visage.models import FaceBox
 
 logger = logging.getLogger(__name__)
 

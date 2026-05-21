@@ -442,3 +442,112 @@ async def recluster(request: Request):
     )
 
     return {"ok": True, "workspace": new_ws.to_api_dict()}
+
+
+
+
+# ── Face Search ───────────────────────────────────────────────────
+
+
+@router.post("/search/face")
+async def search_face(
+    request: Request,
+    body: dict,
+) -> dict:
+    """Search for faces similar to a given face using cosine similarity.
+
+    Body: {
+        "face_id": str (format: "image_path:face_index"),
+        "top_k": 50,
+        "min_score": 0.4,
+        "cluster_id": null,
+        "page": 0,
+        "page_size": 20
+    }
+    """
+    ws: Workspace = request.app.state.workspace
+    face_id = body.get("face_id", "")
+    min_score = body.get("min_score", 0.4)
+    cluster_id = body.get("cluster_id")
+    page = body.get("page", 0)
+    page_size = body.get("page_size", 20)
+
+    # Collect all face embeddings from workspace
+    all_faces: list[tuple[str, np.ndarray, str, int, object]] = []
+    for result in ws.image_results:
+        if result.error:
+            continue
+        for face in result.faces:
+            if face.embedding is not None:
+                key = f"{result.path}:{face.face_index}"
+                all_faces.append(
+                    (key, face.embedding, result.path, face.face_index, face.face_box)
+                )
+
+    if not all_faces:
+        return {
+            "query_face_id": face_id, "results": [],
+            "total": 0, "page": page, "page_size": page_size,
+        }
+
+    # Find query face
+    query_vec = None
+    for key, emb, _, _, _ in all_faces:
+        if key == face_id:
+            query_vec = emb
+            break
+
+    if query_vec is None:
+        return {
+            "query_face_id": face_id, "results": [],
+            "total": 0, "page": page, "page_size": page_size,
+        }
+
+    # Brute-force cosine similarity
+    embeddings = np.array([f[1] for f in all_faces])
+    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+    norms = np.maximum(norms, 1e-10)
+    normalized = embeddings / norms
+    q_norm = query_vec / max(np.linalg.norm(query_vec), 1e-10)
+
+    scores = normalized @ q_norm
+
+    # Build cluster mapping
+    cluster_map = ws.cluster_mapping()
+    path_to_cluster: dict[str, int] = {}
+    for cid, paths in cluster_map.items():
+        for p in paths:
+            path_to_cluster[p] = cid
+
+    # Format results
+    candidates = []
+    for i, (key, _, path, _, bbox) in enumerate(all_faces):
+        if key == face_id:
+            continue
+        score = float(scores[i])
+        if score < min_score:
+            continue
+        cid = path_to_cluster.get(path)
+        if cluster_id is not None and cid != cluster_id:
+            continue
+        candidates.append({
+            "face_id": key,
+            "image_path": path,
+            "similarity": round(score, 4),
+            "cluster_id": cid,
+            "bbox": [bbox.top, bbox.right, bbox.bottom, bbox.left],
+        })
+
+    candidates.sort(key=lambda x: x["similarity"], reverse=True)
+    total = len(candidates)
+    start = page * page_size
+    end = start + page_size
+    page_results = candidates[start:end]
+
+    return {
+        "query_face_id": face_id,
+        "results": page_results,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
