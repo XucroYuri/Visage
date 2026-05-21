@@ -5,7 +5,13 @@ from __future__ import annotations
 import numpy as np
 
 from visage.models import FaceBox
-from visage.quality import _laplacian_variance, _to_grayscale, compute_face_quality
+from visage.quality import (
+    _laplacian_variance,
+    _to_grayscale,
+    compute_combined_quality,
+    compute_face_quality,
+    compute_landmark_quality,
+)
 
 # ── compute_face_quality ─────────────────────────────────────────
 
@@ -99,3 +105,99 @@ class TestLaplacianVariance:
         var = _laplacian_variance(gray)
         assert isinstance(var, float)
         assert var >= 0.0
+
+
+# ── compute_landmark_quality ──────────────────────────────────────
+
+
+class TestComputeLandmarkQuality:
+    def test_none_landmarks_returns_partial(self):
+        score = compute_landmark_quality(None)
+        assert score == 0.4
+
+    def test_partial_landmarks_returns_partial(self):
+        score = compute_landmark_quality([(10, 10), (20, 10)])
+        assert score == 0.4
+
+    def test_well_formed_landmarks_high_score(self):
+        """Symmetrical eyes, vertical ordering correct."""
+        landmarks = [
+            (50, 50),   # left eye
+            (150, 50),  # right eye
+            (100, 100),  # nose
+            (70, 180),   # left mouth
+            (130, 180),  # right mouth
+        ]
+        score = compute_landmark_quality(landmarks)
+        assert 0.5 <= score <= 1.0
+
+    def test_poor_vertical_ordering_low_score(self):
+        """Nose above eyes — not anatomically plausible."""
+        landmarks = [
+            (50, 100),  # left eye
+            (150, 100), # right eye
+            (100, 50),  # nose above eyes
+            (70, 180),  # left mouth
+            (130, 180), # right mouth
+        ]
+        score = compute_landmark_quality(landmarks)
+        assert score < 0.5
+
+    def test_eyes_too_close_low_score(self):
+        """Identical eye positions — not anatomically plausible."""
+        landmarks = [
+            (100, 50),  # left eye
+            (100, 50),  # right eye at same position
+            (100, 100), # nose
+            (70, 180),  # left mouth
+            (130, 180), # right mouth
+        ]
+        score = compute_landmark_quality(landmarks)
+        assert score < 0.5
+
+    def test_valid_but_asymmetric(self):
+        """Eyes at different y heights."""
+        landmarks = [
+            (50, 50),   # left eye
+            (150, 80),  # right eye lower
+            (100, 100), # nose
+            (70, 180),  # left mouth
+            (130, 180), # right mouth
+        ]
+        score = compute_landmark_quality(landmarks)
+        assert isinstance(score, float)
+        assert 0.0 <= score <= 1.0
+
+
+# ── compute_combined_quality ──────────────────────────────────────
+
+
+class TestComputeCombinedQuality:
+    def test_combines_legacy_and_fiqa(self):
+        image = np.random.randint(0, 255, (200, 200, 3), dtype=np.uint8)
+        face_box = FaceBox(top=40, right=160, bottom=160, left=40)
+        landmarks = [
+            (50, 50),
+            (150, 50),
+            (100, 100),
+            (70, 180),
+            (130, 180),
+        ]
+        score = compute_combined_quality(image, face_box, landmarks_5=landmarks)
+        assert isinstance(score, float)
+        assert 0.0 <= score <= 1.0
+
+    def test_no_landmarks_still_works(self):
+        image = np.random.randint(0, 255, (200, 200, 3), dtype=np.uint8)
+        face_box = FaceBox(top=40, right=160, bottom=160, left=40)
+        score = compute_combined_quality(image, face_box, landmarks_5=None)
+        assert isinstance(score, float)
+        assert 0.0 <= score <= 1.0
+
+    def test_pure_legacy_weight(self):
+        """fiqa_weight=0 means legacy only."""
+        image = np.random.randint(0, 255, (200, 200, 3), dtype=np.uint8)
+        face_box = FaceBox(top=40, right=160, bottom=160, left=40)
+        legacy_only = compute_combined_quality(image, face_box, fiqa_weight=0.0)
+        legacy = compute_face_quality(image, face_box)
+        assert abs(legacy_only - legacy) < 1e-6

@@ -209,6 +209,13 @@ def create_app(input_dir: str, config: VisageConfig | None = None) -> FastAPI:
     thread = threading.Thread(target=_background_pipeline, daemon=True)
     thread.start()
 
+    # Health check endpoint (used by Tauri sidecar and useBackendStatus hook)
+    @app.get("/api/health")
+    def health_check() -> dict[str, str]:
+        """Return health status for sidecar process monitoring."""
+        status = "ok" if app.state.workspace is not None else "starting"
+        return {"status": status}
+
     # SSE endpoint for pipeline progress
     @app.get("/api/pipeline-status")
     def pipeline_status(request: Request) -> StreamingResponse:

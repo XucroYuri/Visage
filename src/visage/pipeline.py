@@ -19,8 +19,8 @@ from .cluster import (
     merge_clusters,
 )
 from .config import DEFAULT_OUTPUT_DIRNAME, VisageConfig
-from .detectors import get_detector
 from .detector import detect_faces_batch
+from .detectors import get_detector
 from .embedder import generate_embeddings_batch
 from .head_features import FEATURE_DIM
 from .models import OrganizePlan, PipelineResult

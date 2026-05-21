@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default capabilities for Visage","local":true,"windows":["main"],"permissions":["core:default","shell:allow-open","dialog:default","process:default","core:tray:default"]}}

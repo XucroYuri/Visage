@@ -43,3 +43,7 @@ frontend/.vite/
 
 # uv lock (platform-specific)
 uv.lock
+
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/binaries/

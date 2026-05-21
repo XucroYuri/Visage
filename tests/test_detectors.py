@@ -9,7 +9,6 @@ import pytest
 
 from visage.detectors import DetectorBackend, get_detector
 
-
 # ── Dummy backend for Protocol / factory tests ────────────────────
 
 
@@ -105,7 +104,7 @@ class TestSCRFDDetector:
 
     def test_is_available_returns_false_without_insightface(self):
         from visage.detectors.scrfd import SCRFDDetector
-        detector = SCRFDDetector()
+        _detector = SCRFDDetector()
         # Without insightface installed, this should be False
         # (This test is valid regardless of platform)
 
@@ -231,7 +230,7 @@ class TestYuNetDetector:
 
     def test_is_available_returns_false_without_cv2(self):
         from visage.detectors.yunet import YuNetDetector
-        detector = YuNetDetector(model_path="/nonexistent/model.onnx")
+        _detector = YuNetDetector(model_path="/nonexistent/model.onnx")
         # Without opencv, this will be False normally
         # But we check the is_available returns bool
 
@@ -364,8 +363,8 @@ class TestYuNetDetector:
 
 class TestNMSModule:
     def test_nms_importable_from_detectors(self):
-        from visage.detectors.nms import _nms
         from visage.detector import _nms as _nms_facade
+        from visage.detectors.nms import _nms
         assert _nms is _nms_facade  # same function, re-exported
 
 
@@ -379,8 +378,7 @@ class TestVisionDetector:
         assert hasattr(VisionDetector, "is_available")
 
     def test_is_available_matches_platform(self):
-        from visage.detectors.vision import VisionDetector
-        from visage.detectors.vision import _VISION_AVAILABLE
+        from visage.detectors.vision import _VISION_AVAILABLE, VisionDetector
         detector = VisionDetector()
         assert detector.is_available() == _VISION_AVAILABLE
 
