@@ -6,8 +6,6 @@ from typing import Protocol, runtime_checkable
 
 import numpy as np
 
-# Re-export the concrete backends from the legacy module for backward compatibility.
-from visage.backends import DlibBackend, InsightFaceBackend  # noqa: F401
 from visage.models import FaceBox
 
 

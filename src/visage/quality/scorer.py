@@ -57,9 +57,8 @@ def compute_cluster_quality_score(
         scores.append(0.5)
         weights_list.append(weights.face_size)
 
-    # Sharpness placeholder (would need image data)
-    # For now, use face quality as proxy
-    scores.append(fq * 0.9 + 0.1)  # Slight boost
+    # Sharpness: use face quality as proxy (real sharpness requires image data)
+    scores.append(fq)
     weights_list.append(weights.sharpness)
 
     total_weight = sum(weights_list)
