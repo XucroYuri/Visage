@@ -84,7 +84,7 @@ export function SettingsPanel({
   ].join(" ");
 
   const panelClass = [
-    "fixed right-0 top-0 h-full w-96 bg-white shadow-xl z-50",
+    "fixed right-0 top-0 h-full w-96 bg-white dark:bg-slate-800 shadow-xl z-50",
     "flex flex-col",
     "transition-transform duration-300 ease-out",
     isVisible ? "translate-x-0" : "translate-x-full",
@@ -109,11 +109,11 @@ export function SettingsPanel({
         aria-label="Settings"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 shrink-0">
-          <h2 className="text-base font-semibold text-gray-900">Settings</h2>
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 dark:border-slate-700 dark:border-slate-700 shrink-0">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Settings</h2>
           <button
             onClick={beginClose}
-            className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300 dark:hover:bg-slate-700 hover:bg-gray-100 transition-colors"
             aria-label="Close settings"
           >
             <svg
@@ -141,7 +141,7 @@ export function SettingsPanel({
               className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${
                 activeTab === tab
                   ? "bg-blue-600 text-white"
-                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                  : "text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-700 hover:bg-gray-100"
               }`}
             >
               {tab === "input" ? "Input" : tab === "output" ? "Output" : "Clustering"}
@@ -201,7 +201,7 @@ function InputTab({
       <Field label="Input Directory">
         <button
           onClick={handleCopyPath}
-          className="w-full text-left text-sm text-gray-600 font-mono truncate bg-gray-50 rounded px-2.5 py-1.5 border border-gray-200 hover:border-blue-300 hover:bg-blue-50/30 transition-colors group relative"
+          className="w-full text-left text-sm text-gray-600 font-mono truncate bg-gray-50 rounded px-2.5 py-1.5 border border-gray-200 dark:border-slate-700 hover:border-blue-300 hover:bg-blue-50/30 transition-colors group relative"
           title="Click to copy path"
         >
           {inputDir}
@@ -279,7 +279,7 @@ function OutputTab() {
             value={outputDir}
             onChange={(e) => setOutputDir(e.target.value)}
             placeholder="Default: input_dir/visage_output"
-            className="flex-1 min-w-0 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded px-2.5 py-1.5 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-shadow"
+            className="flex-1 min-w-0 text-sm text-gray-700 bg-gray-50 border border-gray-200 dark:border-slate-700 rounded px-2.5 py-1.5 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-shadow"
           />
         </div>
       </Field>
@@ -290,7 +290,7 @@ function OutputTab() {
           type="text"
           value={folderPrefix}
           onChange={(e) => setFolderPrefix(e.target.value)}
-          className="w-full text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-shadow"
+          className="w-full text-sm text-gray-700 bg-gray-50 border border-gray-200 dark:border-slate-700 rounded px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-shadow"
         />
       </Field>
 
@@ -335,7 +335,7 @@ function OutputTab() {
 
       {/* ── Folder preview ───────────────────────────────────── */}
       <Field label="Expected Folder Structure">
-        <div className="bg-gray-50 border border-gray-200 rounded p-2.5 text-xs font-mono text-gray-600 leading-relaxed">
+        <div className="bg-gray-50 border border-gray-200 dark:border-slate-700 rounded p-2.5 text-xs font-mono text-gray-600 leading-relaxed">
           <div className="text-gray-700">{effectiveDir}/</div>
           {includeUnclustered && <div className="pl-3 text-gray-500">_unclustered/</div>}
           {includeNoFaces && <div className="pl-3 text-gray-500">_no_faces/</div>}
@@ -447,14 +447,14 @@ function ClusterParam({
 }: ClusterParamProps) {
   return (
     <div className="space-y-1">
-      <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+      <label className="text-xs font-medium text-gray-400 dark:text-slate-500 uppercase tracking-wide">
         {label}
       </label>
       {options ? (
         <select
           value={String(value)}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-shadow"
+          className="w-full text-sm text-gray-700 bg-gray-50 border border-gray-200 dark:border-slate-700 rounded px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-shadow"
         >
           {options.map((o) => (
             <option key={o.value} value={o.value}>
@@ -473,7 +473,7 @@ function ClusterParam({
           step={step}
           min={min}
           max={max}
-          className="w-full text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-shadow"
+          className="w-full text-sm text-gray-700 bg-gray-50 border border-gray-200 dark:border-slate-700 rounded px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-shadow"
         />
       )}
       {help && <p className="text-[11px] text-gray-400 leading-snug">{help}</p>}

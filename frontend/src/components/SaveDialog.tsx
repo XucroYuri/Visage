@@ -101,17 +101,17 @@ export function SaveDialog({
         role="dialog"
         aria-modal="true"
         aria-label="Save to Disk"
-        className="animate-scale-in bg-white rounded-lg shadow-2xl max-w-md w-full max-h-[85vh] flex flex-col"
+        className="animate-scale-in bg-white dark:bg-slate-800 rounded-lg shadow-2xl max-w-md w-full max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Header ────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
-          <h2 className="text-lg font-semibold text-gray-900">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-slate-700 shrink-0">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">
             Save to Disk
           </h2>
           <button
             onClick={onClose}
-            className="ml-4 text-gray-400 hover:text-gray-600 transition-colors leading-none text-xl"
+            className="ml-4 text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300 transition-colors leading-none text-xl"
             aria-label="Close"
           >
             &times;
@@ -128,7 +128,7 @@ export function SaveDialog({
           <fieldset className="space-y-1.5">
             <label
               htmlFor="save-output-dir"
-              className="block text-sm font-medium text-gray-700"
+              className="block text-sm font-medium text-gray-700 dark:text-slate-300"
             >
               Output Directory
             </label>
@@ -151,7 +151,7 @@ export function SaveDialog({
           <fieldset className="space-y-1.5">
             <label
               htmlFor="save-folder-prefix"
-              className="block text-sm font-medium text-gray-700"
+              className="block text-sm font-medium text-gray-700 dark:text-slate-300"
             >
               Folder Prefix
             </label>
@@ -174,7 +174,7 @@ export function SaveDialog({
 
           {/* ── 3. Copy Mode ────────────────────────────────── */}
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium text-gray-700 mb-1">
+            <legend className="text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
               Copy Mode
             </legend>
 
@@ -231,7 +231,7 @@ export function SaveDialog({
 
           {/* ── 4. Include Options ──────────────────────────── */}
           <fieldset className="space-y-2.5">
-            <legend className="text-sm font-medium text-gray-700 mb-1">
+            <legend className="text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
               Include
             </legend>
 
@@ -242,7 +242,7 @@ export function SaveDialog({
                 onChange={(e) => setIncludeUnclustered(e.target.checked)}
                 className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              <span className="text-sm text-gray-700">
+              <span className="text-sm text-gray-700 dark:text-slate-300">
                 Include unclustered faces
               </span>
             </label>
@@ -254,7 +254,7 @@ export function SaveDialog({
                 onChange={(e) => setIncludeNoFaces(e.target.checked)}
                 className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              <span className="text-sm text-gray-700">
+              <span className="text-sm text-gray-700 dark:text-slate-300">
                 Include images without faces
               </span>
             </label>
@@ -262,7 +262,7 @@ export function SaveDialog({
 
           {/* ── 5. Multi-Face Strategy ──────────────────────── */}
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium text-gray-700 mb-1">
+            <legend className="text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
               Multi-Face Photos
             </legend>
             <p className="text-xs text-gray-400 mb-2">
@@ -322,7 +322,7 @@ export function SaveDialog({
 
           {/* ── 6. Save Summary ────────────────────────────── */}
           <fieldset className="space-y-1.5">
-            <legend className="text-sm font-medium text-gray-700">
+            <legend className="text-sm font-medium text-gray-700 dark:text-slate-300">
               Save Summary
             </legend>
             <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-800 space-y-1.5">
@@ -359,7 +359,7 @@ export function SaveDialog({
 
           {/* ── 7. Cluster Selection ────────────────────────── */}
           <fieldset className="space-y-3">
-            <legend className="text-sm font-medium text-gray-700 mb-1">
+            <legend className="text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
               Cluster Selection
             </legend>
 
@@ -441,7 +441,7 @@ export function SaveDialog({
                         onChange={() => handleToggleCluster(c.id)}
                         className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0"
                       />
-                      <span className="text-sm text-gray-700 truncate">
+                      <span className="text-sm text-gray-700 dark:text-slate-300 truncate">
                         {c.name}
                       </span>
                       <span className="ml-auto text-xs text-gray-400 shrink-0">
@@ -464,7 +464,7 @@ export function SaveDialog({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg
+            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 bg-gray-100 rounded-lg
                        hover:bg-gray-200 disabled:opacity-40 transition-colors"
           >
             Cancel

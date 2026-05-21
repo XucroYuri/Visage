@@ -25,6 +25,9 @@ export function Sidebar({ ctx }: { ctx: SidebarContext }) {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useUIStore((s) => s.toggleSidebar);
+
   const {
     ws,
     mergeMode,
@@ -86,16 +89,77 @@ export function Sidebar({ ctx }: { ctx: SidebarContext }) {
     return match ? parseInt(match[1], 10) : null;
   })();
 
+  // ── Collapsed sidebar: icon-only bar ───────────────────────
+  if (sidebarCollapsed) {
+    return (
+      <aside className="flex flex-col items-center w-14 bg-gray-50 dark:bg-slate-800 border-r border-gray-200 dark:border-slate-700 shrink-0 overflow-hidden">
+        <button
+          onClick={toggleSidebar}
+          className="w-full p-3 text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+          title="Expand sidebar"
+          aria-label="Expand sidebar"
+        >
+          <svg className="w-5 h-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+          </svg>
+        </button>
+
+        <nav className="flex flex-col items-center gap-1 p-2 w-full">
+          <button
+            onClick={handleViewAll}
+            className={`w-10 h-10 flex items-center justify-center rounded-lg text-lg transition-colors ${
+              location.pathname === "/"
+                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
+                : "hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-400"
+            }`}
+            title="All Photos"
+          >
+            &#128247;
+          </button>
+          <button
+            onClick={handleViewNoise}
+            className={`w-10 h-10 flex items-center justify-center rounded-lg text-lg transition-colors ${
+              location.pathname === "/noise"
+                ? "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+                : "hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-400"
+            }`}
+            title="Unclustered"
+          >
+            &#10067;
+          </button>
+        </nav>
+      </aside>
+    );
+  }
+
+  // ── Expanded sidebar ──────────────────────────────────────
   return (
-    <aside className="w-72 bg-gray-50 border-r border-gray-200 overflow-y-auto shrink-0 flex flex-col">
+    <aside className="flex flex-col w-72 bg-gray-50 dark:bg-slate-800 border-r border-gray-200 dark:border-slate-700 overflow-y-auto shrink-0">
+      {/* Collapse toggle */}
+      <div className="flex items-center justify-between p-2 border-b border-gray-200 dark:border-slate-700">
+        <span className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 ml-2">
+          Clusters
+        </span>
+        <button
+          onClick={toggleSidebar}
+          className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded transition-colors"
+          title="Collapse sidebar"
+          aria-label="Collapse sidebar"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+          </svg>
+        </button>
+      </div>
+
       {/* Navigation buttons */}
-      <nav className="p-3 border-b border-gray-200 space-y-1">
+      <nav className="p-3 border-b border-gray-200 dark:border-slate-700 space-y-1">
         <button
           onClick={handleViewAll}
           className={`w-full text-left px-3 py-2 rounded text-sm font-medium transition-colors ${
             location.pathname === "/"
-              ? "bg-blue-50 text-blue-700"
-              : "hover:bg-gray-100 text-gray-700"
+              ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
+              : "hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300"
           }`}
         >
           &#128247; All Photos
@@ -105,13 +169,13 @@ export function Sidebar({ ctx }: { ctx: SidebarContext }) {
           onClick={handleViewNoise}
           className={`w-full text-left px-3 py-2 rounded text-sm font-medium transition-colors ${
             location.pathname === "/noise"
-              ? "bg-amber-50 text-amber-700"
-              : "hover:bg-gray-100 text-gray-700"
+              ? "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+              : "hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300"
           }`}
         >
           &#10067; Unclustered
           {ws.noise_photos.length > 0 && (
-            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700">
+            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400">
               {ws.noise_photos.length}
             </span>
           )}
@@ -122,8 +186,8 @@ export function Sidebar({ ctx }: { ctx: SidebarContext }) {
           onClick={mergeMode ? handleMergeCancel : handleToggleMergeMode}
           className={`w-full text-left px-3 py-2 rounded text-sm font-medium transition-colors ${
             mergeMode
-              ? "bg-purple-100 text-purple-700"
-              : "hover:bg-gray-100 text-gray-700"
+              ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400"
+              : "hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300"
           }`}
         >
           {mergeMode ? "&#10005; Cancel Merge" : "&#9878; Merge Mode"}
@@ -150,7 +214,7 @@ export function Sidebar({ ctx }: { ctx: SidebarContext }) {
 
       {/* Cluster list with drop zone */}
       <div
-        className="flex-1 divide-y divide-gray-100"
+        className="flex-1 divide-y divide-gray-100 dark:divide-slate-700/50"
         onDragOver={handleDragOver}
       >
         {ws.clusters.map((c) => (

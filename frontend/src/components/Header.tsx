@@ -1,4 +1,5 @@
 import type { WorkspaceState } from "../api";
+import { DarkModeToggle } from "./DarkModeToggle";
 
 interface HeaderProps {
   stats: WorkspaceState["stats"] | null;
@@ -22,20 +23,22 @@ export function Header({
   onOpenSettings,
 }: HeaderProps) {
   return (
-    <header className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200 shadow-sm shrink-0">
-      <div className="flex items-center gap-4">
-        <h1 className="text-lg font-semibold text-gray-900">Visage Review</h1>
+    <header className="flex items-center justify-between px-4 sm:px-6 py-3 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 shadow-sm shrink-0 transition-colors">
+      <div className="flex items-center gap-4 min-w-0">
+        <h1 className="text-lg font-semibold text-gray-900 dark:text-slate-100 whitespace-nowrap">
+          Visage Review
+        </h1>
         {stats && (
-          <div className="flex items-center gap-1.5">
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium">
+          <div className="hidden sm:flex items-center gap-1.5 flex-wrap">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-full text-xs font-medium">
               <span className="w-2 h-2 rounded-full bg-indigo-400" />
               {stats.num_clusters} clusters
             </span>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-xs font-medium">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full text-xs font-medium">
               <span className="w-2 h-2 rounded-full bg-green-400" />
               {stats.images_with_faces} images
             </span>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full text-xs font-medium">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full text-xs font-medium">
               <span className="w-2 h-2 rounded-full bg-amber-400" />
               {stats.num_noise_faces} noise
             </span>
@@ -43,15 +46,18 @@ export function Header({
         )}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 shrink-0">
         {saveResult && (
-          <span className="text-sm text-green-600 mr-2 animate-pulse">
+          <span className="text-sm text-green-600 dark:text-green-400 mr-2 animate-pulse hidden sm:inline">
             {saveResult}
           </span>
         )}
+
+        <DarkModeToggle />
+
         <button
           onClick={onOpenSettings}
-          className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          className="p-2 text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
           title="Settings"
           aria-label="Settings"
         >
@@ -75,17 +81,19 @@ export function Header({
             />
           </svg>
         </button>
+
         <button
           onClick={onUndo}
           disabled={!canUndo || mutating}
-          className="px-3 py-1.5 text-sm border rounded disabled:opacity-30 hover:bg-gray-50 transition-colors"
+          className="px-3 py-1.5 text-sm border border-gray-200 dark:border-slate-600 rounded disabled:opacity-30 hover:bg-gray-50 dark:hover:bg-slate-800 text-gray-700 dark:text-slate-300 transition-colors"
           title="Undo (Ctrl+Z)"
         >
-          <kbd className="hidden sm:inline-flex items-center px-1 py-0.5 mr-1 text-[10px] font-mono bg-gray-200/70 rounded">
+          <kbd className="hidden sm:inline-flex items-center px-1 py-0.5 mr-1 text-[10px] font-mono bg-gray-200/70 dark:bg-slate-700 rounded">
             Ctrl+Z
           </kbd>
           &#8630; Undo
         </button>
+
         <button
           onClick={onOpenSave}
           disabled={saving || mutating}

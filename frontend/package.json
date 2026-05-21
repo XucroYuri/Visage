@@ -14,15 +14,16 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/react-query": "^5.100.11",
+    "@tanstack/react-virtual": "^3.13.25",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-shell": "^2",
     "@testing-library/dom": "^10.4.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-masonry-css": "^1.0.16",
     "react-router": "^7.15.1",
     "tailwindcss": "^4.3.0",
-    "zustand": "^5.0.13",
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-shell": "^2"
+    "zustand": "^5.0.13"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -1,5 +1,5 @@
-import { Suspense, lazy, useCallback, useEffect, useState } from "react";
-import { Routes, Route, useNavigate } from "react-router";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import { Routes, Route, useLocation, useNavigate } from "react-router";
 import type { SaveSettings, WorkspaceState } from "./api";
 import { ApiError, fetchWorkspace } from "./api";
 import { Header } from "./components/Header";
@@ -35,6 +35,30 @@ const PipelineLoader = lazy(() =>
   import("./components/PipelineLoader").then((m) => ({ default: m.PipelineLoader })),
 );
 
+// ── Dark mode manager ──────────────────────────────────────────
+
+function useDarkMode() {
+  const darkMode = useUIStore((s) => s.darkMode);
+
+  // Determine effective dark state
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+    const update = () => {
+      const isDark = darkMode === true || (darkMode === "system" && mediaQuery.matches);
+      document.documentElement.classList.toggle("dark", isDark);
+    };
+
+    update();
+
+    // Listen for system preference changes when in "system" mode
+    if (darkMode === "system") {
+      mediaQuery.addEventListener("change", update);
+      return () => mediaQuery.removeEventListener("change", update);
+    }
+  }, [darkMode]);
+}
+
 // ── Suspense fallback ──────────────────────────────────────────
 
 function ViewFallback() {
@@ -49,6 +73,16 @@ function ViewFallback() {
 
 export default function App() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Dark mode
+  useDarkMode();
+
+  // Responsive layout
+  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
+  const batchMode = useUIStore((s) => s.batchMode);
+  const selectedPhotoPaths = useUIStore((s) => s.selectedPhotoPaths);
+  const setSelectedPhotoPaths = useUIStore((s) => s.setSelectedPhotoPaths);
 
   // Workspace store
   const ws = useWorkspaceStore((s) => s.ws);
@@ -85,6 +119,8 @@ export default function App() {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveResult, setSaveResult] = useState<string | null>(null);
 
+  // Ref for main content area (for scrolling)
+  const mainRef = useRef<HTMLDivElement>(null);
 
   // ── Event handlers ─────────────────────────────────────────
 
@@ -209,11 +245,10 @@ export default function App() {
 
   const handlePipelineError = useCallback(
     (msg: string) => {
-      // Retry: if it fails with non-503, set error
       fetchWorkspace()
         .then(setWs)
         .catch((e) => {
-          if (e instanceof ApiError && e.statusCode === 503) return; // pipeline still running
+          if (e instanceof ApiError && e.statusCode === 503) return;
           setError(String(e));
         });
       console.error("Pipeline error:", msg);
@@ -223,14 +258,26 @@ export default function App() {
 
   // ── Keyboard shortcuts ──────────────────────────────────────
 
+  const handleSelectAll = useCallback(() => {
+    // Select all photos on the current route
+    if (ws && location.pathname === "/" && ws.all_photos.length > 0) {
+      setSelectedPhotoPaths(new Set(ws.all_photos.map((p) => p.path)));
+    }
+  }, [ws, setSelectedPhotoPaths]);
+
   useKeyboard({
     onUndo: ws?.can_undo ? handleUndo : undefined,
     onSave: saveDialogOpen ? undefined : handleOpenSave,
+    onSelectAll: handleSelectAll,
     onEscape: () => {
       if (editingName !== null) {
         handleCancelEdit();
       } else if (mergeMode) {
         handleMergeCancel();
+      } else if (selectedPhotoPaths.size > 0) {
+        setSelectedPhotoPaths(new Set());
+      } else if (batchMode) {
+        useUIStore.getState().setBatchMode(false);
       }
     },
   });
@@ -250,12 +297,12 @@ export default function App() {
 
   if (error && !ws) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
+      <div className="flex items-center justify-center h-screen" style={{ backgroundColor: "var(--color-bg-primary)" }}>
         <div className="text-center">
           <p className="text-xl text-red-500 mb-2">
             Failed to load workspace
           </p>
-          <p className="text-sm text-gray-500 mb-4">{error}</p>
+          <p className="text-sm mb-4" style={{ color: "var(--color-text-secondary)" }}>{error}</p>
           <button
             onClick={() => {
               setError(null);
@@ -296,7 +343,7 @@ export default function App() {
   // ── Main UI ───────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-screen" style={{ backgroundColor: "var(--color-bg-primary)" }}>
       <Header
         stats={ws.stats}
         canUndo={ws.can_undo}
@@ -311,19 +358,30 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar ctx={sidebarCtx} />
 
-        <main className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
+        <main
+          ref={mainRef}
+          className="flex-1 overflow-y-auto p-4 sm:p-6"
+          style={{
+            backgroundColor: "var(--color-bg-tertiary)",
+            color: "var(--color-text-primary)",
+          }}
+        >
           <Suspense fallback={<ViewFallback />}>
             <Routes>
               <Route
                 path="/"
                 element={
                   <div>
-                    <h2 className="text-lg font-semibold text-gray-700 mb-4">
+                    <h2
+                      className="text-lg font-semibold mb-4"
+                      style={{ color: "var(--color-text-primary)" }}
+                    >
                       All Photos ({ws.all_photos.length})
                     </h2>
                     <PhotoGrid
                       totalCount={ws.all_photos.length}
                       emptyMessage="No photos"
+                      virtualized={ws.all_photos.length > 200}
                     >
                       {ws.all_photos.map((photo) => (
                         <div key={photo.path}>

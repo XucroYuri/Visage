@@ -11,9 +11,25 @@ interface UIStore {
   setEditValue: (v: string) => void;
   saving: boolean;
   setSaving: (v: boolean) => void;
+
+  // Batch operations (M4)
+  selectedPhotoPaths: Set<string>;
+  setSelectedPhotoPaths: (s: Set<string>) => void;
+  batchMode: boolean;
+  setBatchMode: (v: boolean) => void;
+
+  // Responsive layout (M4)
+  sidebarCollapsed: boolean;
+  setSidebarCollapsed: (v: boolean) => void;
+  toggleSidebar: () => void;
+
+  // Dark mode (M4)
+  darkMode: boolean | "system";
+  setDarkMode: (v: boolean | "system") => void;
 }
 
-export const useUIStore = create<UIStore>((set) => ({
+export const useUIStore = create<UIStore>((set, get) => ({
+  // ── Existing ──
   mergeMode: false,
   setMergeMode: (mergeMode) => set({ mergeMode }),
   selectedForMerge: new Set(),
@@ -24,4 +40,19 @@ export const useUIStore = create<UIStore>((set) => ({
   setEditValue: (editValue) => set({ editValue }),
   saving: false,
   setSaving: (saving) => set({ saving }),
+
+  // ── Batch operations ──
+  selectedPhotoPaths: new Set(),
+  setSelectedPhotoPaths: (selectedPhotoPaths) => set({ selectedPhotoPaths }),
+  batchMode: false,
+  setBatchMode: (batchMode) => set({ batchMode }),
+
+  // ── Responsive layout ──
+  sidebarCollapsed: false,
+  setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
+  toggleSidebar: () => set({ sidebarCollapsed: !get().sidebarCollapsed }),
+
+  // ── Dark mode ──
+  darkMode: "system",
+  setDarkMode: (darkMode) => set({ darkMode }),
 }));
