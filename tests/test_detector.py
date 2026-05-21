@@ -59,7 +59,7 @@ class TestCheckVision:
     def test_raises_when_unavailable(self):
         from visage.detector import _check_vision
 
-        with patch("visage.detector._VISION_AVAILABLE", False):
+        with patch("visage.detectors.vision._VISION_AVAILABLE", False):
             with pytest.raises(RuntimeError, match="macOS Vision framework not available"):
                 _check_vision()
 
@@ -72,7 +72,8 @@ class TestDetectFaces:
         """When Vision returns no observations."""
         with patch("visage.detector._VISION_AVAILABLE", True), \
              patch("visage.detector._LANDMARKS_CRASH_BUG", False):
-            with patch("visage.detector.VNDetectFaceLandmarksRequest") as mock_req_cls, \
+            with patch("visage.detector.VNDetectFaceRectanglesRequest") as mock_rect_cls, \
+                 patch("visage.detector.VNDetectFaceLandmarksRequest") as mock_lm_cls, \
                  patch("visage.detector.VNImageRequestHandler") as mock_handler_cls, \
                  patch("visage.detector.NSURL"):
 
@@ -81,10 +82,13 @@ class TestDetectFaces:
                 handler.performRequests_error_.return_value = True
                 mock_handler_cls.alloc.return_value.initWithURL_options_.return_value = handler
 
-                # Mock request: results returns None
-                request = MagicMock()
-                request.results.return_value = None
-                mock_req_cls.alloc.return_value.init.return_value = request
+                # Mock rect request: results returns None
+                rect_request = MagicMock()
+                rect_request.results.return_value = None
+                mock_rect_cls.alloc.return_value.init.return_value = rect_request
+
+                # Landmarks request still created but unused since rect has no results
+                mock_lm_cls.alloc.return_value.init.return_value = MagicMock()
 
                 from visage.detector import detect_faces
                 result, stats = detect_faces("/tmp/test.jpg")
@@ -156,10 +160,11 @@ class TestDetectFaces:
         img_path = tmp_path / "test.jpg"
         Image.new("RGB", (1000, 800)).save(img_path, "JPEG")
 
-        # Build mock observation with landmarks
-        obs = _make_mock_observation(confidence=0.9, x=0.1, y=0.2, w=0.3, h=0.4)
+        # Build rect observation (position: x=0.1, y=0.2, w=0.3, h=0.4)
+        rect_obs = _make_mock_observation(confidence=0.9, x=0.1, y=0.2, w=0.3, h=0.4)
 
-        # Mock landmarks with faceContour
+        # Build landmarks observation at same position with contour data
+        lm_obs = _make_mock_observation(confidence=0.9, x=0.1, y=0.2, w=0.3, h=0.4)
         contour = MagicMock()
         contour.pointCount.return_value = 4
         pts = []
@@ -169,7 +174,6 @@ class TestDetectFaces:
             pt.y = ny
             pts.append(pt)
         contour.normalizedPoints.return_value = pts
-
         landmarks = MagicMock()
         landmarks.faceContour.return_value = contour
         landmarks.medianLine.return_value = None
@@ -177,22 +181,27 @@ class TestDetectFaces:
         landmarks.rightEye.return_value = None
         landmarks.nose.return_value = None
         landmarks.outerLips.return_value = None
-        obs.landmarks.return_value = landmarks
+        lm_obs.landmarks.return_value = landmarks
 
-        with patch("visage.detector._VISION_AVAILABLE", True), \
-             patch("visage.detector._LANDMARKS_CRASH_BUG", False):
-            with patch("visage.detector.VNDetectFaceLandmarksRequest") as mock_req_cls, \
-                 patch("visage.detector.VNImageRequestHandler") as mock_handler_cls, \
-                 patch("visage.detector.NSURL"), \
+        with patch("visage.detectors.vision._VISION_AVAILABLE", True), \
+             patch("visage.detectors.vision._LANDMARKS_CRASH_BUG", False):
+            with patch("visage.detectors.vision.VNDetectFaceRectanglesRequest") as mock_rect_cls, \
+                 patch("visage.detectors.vision.VNDetectFaceLandmarksRequest") as mock_lm_cls, \
+                 patch("visage.detectors.vision.VNImageRequestHandler") as mock_handler_cls, \
+                 patch("visage.detectors.vision.NSURL"), \
                  patch("visage.detector._get_image_dimensions", return_value=(1000, 800)):
 
                 handler = MagicMock()
                 handler.performRequests_error_.return_value = True
                 mock_handler_cls.alloc.return_value.initWithURL_options_.return_value = handler
 
-                request = MagicMock()
-                request.results.return_value = [obs]
-                mock_req_cls.alloc.return_value.init.return_value = request
+                rect_request = MagicMock()
+                rect_request.results.return_value = [rect_obs]
+                mock_rect_cls.alloc.return_value.init.return_value = rect_request
+
+                lm_request = MagicMock()
+                lm_request.results.return_value = [lm_obs]
+                mock_lm_cls.alloc.return_value.init.return_value = lm_request
 
                 from visage.detector import detect_faces
                 result, stats = detect_faces(str(img_path))
@@ -202,6 +211,7 @@ class TestDetectFaces:
                 # Contour bbox should be tighter than the default Vision bbox
                 # Default bbox would be: top=320, right=400, bottom=160, left=100
                 # Contour bbox (with padding) should differ from the default
+                assert fb is not None
                 assert fb.top != 320 or fb.right != 400  # not the same as default
 
     def test_falls_back_to_default_bbox_without_landmarks(self, tmp_path):
@@ -209,23 +219,27 @@ class TestDetectFaces:
         img_path = tmp_path / "test.jpg"
         Image.new("RGB", (1000, 800)).save(img_path, "JPEG")
 
-        obs = _make_mock_observation(confidence=0.9, x=0.1, y=0.2, w=0.3, h=0.4)
-        obs.landmarks.return_value = None
+        rect_obs = _make_mock_observation(confidence=0.9, x=0.1, y=0.2, w=0.3, h=0.4)
 
-        with patch("visage.detector._VISION_AVAILABLE", True), \
-             patch("visage.detector._LANDMARKS_CRASH_BUG", False):
-            with patch("visage.detector.VNDetectFaceLandmarksRequest") as mock_req_cls, \
-                 patch("visage.detector.VNImageRequestHandler") as mock_handler_cls, \
-                 patch("visage.detector.NSURL"), \
+        with patch("visage.detectors.vision._VISION_AVAILABLE", True), \
+             patch("visage.detectors.vision._LANDMARKS_CRASH_BUG", False):
+            with patch("visage.detectors.vision.VNDetectFaceRectanglesRequest") as mock_rect_cls, \
+                 patch("visage.detectors.vision.VNDetectFaceLandmarksRequest") as mock_lm_cls, \
+                 patch("visage.detectors.vision.VNImageRequestHandler") as mock_handler_cls, \
+                 patch("visage.detectors.vision.NSURL"), \
                  patch("visage.detector._get_image_dimensions", return_value=(1000, 800)):
-
                 handler = MagicMock()
                 handler.performRequests_error_.return_value = True
                 mock_handler_cls.alloc.return_value.initWithURL_options_.return_value = handler
 
-                request = MagicMock()
-                request.results.return_value = [obs]
-                mock_req_cls.alloc.return_value.init.return_value = request
+                rect_request = MagicMock()
+                rect_request.results.return_value = [rect_obs]
+                mock_rect_cls.alloc.return_value.init.return_value = rect_request
+
+                # Landmarks request returns no results → no matching
+                lm_request = MagicMock()
+                lm_request.results.return_value = None
+                mock_lm_cls.alloc.return_value.init.return_value = lm_request
 
                 from visage.detector import detect_faces
                 result, stats = detect_faces(str(img_path))
@@ -421,3 +435,59 @@ class TestDetectFacesBatch:
                 assert len(callbacks) >= 2
                 # Last callback should be (2, 2)
                 assert callbacks[-1] == (2, 2)
+
+
+# ── _nms ──────────────────────────────────────────────────────────
+
+
+class TestNMS:
+    def test_empty_input(self):
+        from visage.detector import _nms
+        assert _nms([]) == []
+
+    def test_single_detection(self):
+        from visage.detector import _nms
+        det = [(FaceBox(top=10, right=110, bottom=110, left=10), 0.9, None)]
+        assert _nms(det) == det
+
+    def test_highly_overlapping_removes_lower_confidence(self):
+        from visage.detector import _nms
+        # Two boxes at nearly the same location
+        dets = [
+            (FaceBox(top=10, right=110, bottom=110, left=10), 0.9, None),
+            (FaceBox(top=15, right=105, bottom=105, left=15), 0.5, None),
+        ]
+        result = _nms(dets)
+        assert len(result) == 1
+        assert result[0][1] == 0.9  # higher confidence kept
+
+    def test_non_overlapping_keeps_both(self):
+        from visage.detector import _nms
+        # Two boxes far apart
+        dets = [
+            (FaceBox(top=10, right=110, bottom=110, left=10), 0.9, None),
+            (FaceBox(top=200, right=300, bottom=300, left=200), 0.8, None),
+        ]
+        result = _nms(dets)
+        assert len(result) == 2
+
+    def test_partial_overlap_below_threshold_keeps_both(self):
+        from visage.detector import _nms
+        # Slight overlap: IoU < 0.5
+        dets = [
+            (FaceBox(top=10, right=110, bottom=110, left=10), 0.9, None),
+            (FaceBox(top=60, right=160, bottom=160, left=60), 0.8, None),
+        ]
+        result = _nms(dets)
+        assert len(result) == 2
+
+    def test_three_overlapping_removes_two(self):
+        from visage.detector import _nms
+        dets = [
+            (FaceBox(top=10, right=110, bottom=110, left=10), 0.9, None),
+            (FaceBox(top=15, right=105, bottom=105, left=15), 0.7, None),
+            (FaceBox(top=5, right=100, bottom=100, left=5), 0.6, None),
+        ]
+        result = _nms(dets)
+        assert len(result) == 1
+        assert result[0][1] == 0.9

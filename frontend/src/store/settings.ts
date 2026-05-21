@@ -9,6 +9,7 @@ interface SettingsStore {
   includeNoFaces: boolean;     // default false
   clusterSelectionMode: "all" | "selected";
   selectedClusterIds: Set<number>;
+  multiFaceStrategy: "primary" | "all";  // how multi-face images are organized
 
   setOutputDir: (dir: string) => void;
   setCopyMode: (v: boolean) => void;
@@ -17,6 +18,7 @@ interface SettingsStore {
   setIncludeNoFaces: (v: boolean) => void;
   setClusterSelectionMode: (v: "all" | "selected") => void;
   setSelectedClusterIds: (ids: Set<number>) => void;
+  setMultiFaceStrategy: (v: "primary" | "all") => void;
   resetToDefaults: () => void;
   resetClusterSelection: () => void;
 }
@@ -27,6 +29,7 @@ export const DEFAULTS = {
   folderPrefix: "person_",
   includeUnclustered: false,
   includeNoFaces: false,
+  multiFaceStrategy: "primary" as const,
 };
 
 const CLUSTER_SELECTION_DEFAULTS = {
@@ -46,6 +49,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setIncludeNoFaces: (includeNoFaces) => set({ includeNoFaces }),
       setClusterSelectionMode: (clusterSelectionMode) => set({ clusterSelectionMode }),
       setSelectedClusterIds: (selectedClusterIds) => set({ selectedClusterIds }),
+      setMultiFaceStrategy: (multiFaceStrategy) => set({ multiFaceStrategy }),
       resetToDefaults: () => set({ ...DEFAULTS }),
       resetClusterSelection: () => set({ ...CLUSTER_SELECTION_DEFAULTS }),
     }),
@@ -60,6 +64,7 @@ export const useSettingsStore = create<SettingsStore>()(
         includeUnclustered: state.includeUnclustered,
         includeNoFaces: state.includeNoFaces,
         clusterSelectionMode: state.clusterSelectionMode,
+        multiFaceStrategy: state.multiFaceStrategy,
       }),
     },
   ),

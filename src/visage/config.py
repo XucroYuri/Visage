@@ -21,7 +21,8 @@ DEFAULT_OUTPUT_DIRNAME = "visage_output"
 class VisageConfig:
     """All tunable parameters with sensible defaults."""
 
-    # Face detection (Vision framework)
+    # Face detection
+    detection_backend: str = "auto"  # "auto", "vision", "scrfd", "yunet"
     detection_confidence: float = 0.5
     min_face_size: int = 40  # minimum face bounding box dimension in pixels
 
@@ -31,7 +32,7 @@ class VisageConfig:
     num_jitters: int = 1  # times to re-sample for embedding — dlib only
 
     # Face quality filtering
-    min_face_quality: float = 0.0  # minimum quality score [0, 1]; 0 = no filtering
+    min_face_quality: float = 0.15  # minimum quality score [0, 1]; 0 = no filtering
 
     # Clustering
     cluster_method: str = "hdbscan"  # "dbscan" or "hdbscan"
@@ -65,9 +66,15 @@ class VisageConfig:
     folder_prefix: str = DEFAULT_FOLDER_PREFIX
     include_unclustered: bool = False
     include_no_faces: bool = False
+    multi_face_strategy: str = "primary"  # "primary" or "all"
 
     def __post_init__(self) -> None:
         """Validate configuration values."""
+        if self.detection_backend not in ("auto", "vision", "scrfd", "yunet"):
+            raise ValueError(
+                f"detection_backend must be 'auto', 'vision', 'scrfd', or 'yunet', "
+                f"got {self.detection_backend!r}"
+            )
         if not 0.0 <= self.detection_confidence <= 1.0:
             raise ValueError(
                 f"detection_confidence must be 0-1, got {self.detection_confidence}"
@@ -138,6 +145,11 @@ class VisageConfig:
             )
         if self.max_workers < 1:
             raise ValueError(f"max_workers must be >= 1, got {self.max_workers}")
+        if self.multi_face_strategy not in ("primary", "all"):
+            raise ValueError(
+                f"multi_face_strategy must be 'primary' or 'all', "
+                f"got {self.multi_face_strategy!r}"
+            )
 
 
 
@@ -160,6 +172,7 @@ def _apply_toml_section(
 
 _TOML_KEY_MAP = {
     "detection": {
+        "backend": "detection_backend",
         "confidence": "detection_confidence",
         "min_face_size": "min_face_size",
     },
@@ -188,6 +201,7 @@ _TOML_KEY_MAP = {
         "folder_prefix": "folder_prefix",
         "include_unclustered": "include_unclustered",
         "include_no_faces": "include_no_faces",
+        "multi_face_strategy": "multi_face_strategy",
     },
 }
 

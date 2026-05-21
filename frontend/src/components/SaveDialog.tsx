@@ -32,6 +32,8 @@ export function SaveDialog({
   const setClusterSelectionMode = useSettingsStore((s) => s.setClusterSelectionMode);
   const selectedClusterIds = useSettingsStore((s) => s.selectedClusterIds);
   const setSelectedClusterIds = useSettingsStore((s) => s.setSelectedClusterIds);
+  const multiFaceStrategy = useSettingsStore((s) => s.multiFaceStrategy);
+  const setMultiFaceStrategy = useSettingsStore((s) => s.setMultiFaceStrategy);
 
   // ── Keyboard: Escape closes ───────────────────────────────
   useEffect(() => {
@@ -258,7 +260,67 @@ export function SaveDialog({
             </label>
           </fieldset>
 
-          {/* ── 5. Save Summary ────────────────────────────── */}
+          {/* ── 5. Multi-Face Strategy ──────────────────────── */}
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium text-gray-700 mb-1">
+              Multi-Face Photos
+            </legend>
+            <p className="text-xs text-gray-400 mb-2">
+              How should images containing multiple faces be organized?
+            </p>
+
+            <label
+              className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${
+                multiFaceStrategy === "primary"
+                  ? "border-blue-400 bg-blue-50/50"
+                  : "border-gray-200 hover:bg-gray-50"
+              }`}
+            >
+              <input
+                type="radio"
+                name="multiFaceStrategy"
+                checked={multiFaceStrategy === "primary"}
+                onChange={() => setMultiFaceStrategy("primary")}
+                className="mt-0.5 shrink-0 w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+              />
+              <div className="min-w-0">
+                <span className="text-sm font-medium text-gray-800">
+                  Primary face only
+                </span>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Each image is placed in the folder of its main subject only.
+                  Secondary faces are not represented in output folders.
+                </p>
+              </div>
+            </label>
+
+            <label
+              className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${
+                multiFaceStrategy === "all"
+                  ? "border-blue-400 bg-blue-50/50"
+                  : "border-gray-200 hover:bg-gray-50"
+              }`}
+            >
+              <input
+                type="radio"
+                name="multiFaceStrategy"
+                checked={multiFaceStrategy === "all"}
+                onChange={() => setMultiFaceStrategy("all")}
+                className="mt-0.5 shrink-0 w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+              />
+              <div className="min-w-0">
+                <span className="text-sm font-medium text-gray-800">
+                  All faces (duplicate)
+                </span>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Images appear in every folder whose person appears in the
+                  photo. A photo with two people is copied to both folders.
+                </p>
+              </div>
+            </label>
+          </fieldset>
+
+          {/* ── 6. Save Summary ────────────────────────────── */}
           <fieldset className="space-y-1.5">
             <legend className="text-sm font-medium text-gray-700">
               Save Summary
@@ -279,6 +341,14 @@ export function SaveDialog({
                 </span>
               </div>
               <div className="flex justify-between">
+                <span>Multi-face photos</span>
+                <span className="font-semibold">
+                  {multiFaceStrategy === "primary"
+                    ? "Primary face"
+                    : "All faces"}
+                </span>
+              </div>
+              <div className="flex justify-between">
                 <span>Output folder</span>
                 <span className="font-semibold truncate max-w-[200px] text-right" title={outputDir || defaultOutputDir}>
                   {outputDir || defaultOutputDir}
@@ -287,7 +357,7 @@ export function SaveDialog({
             </div>
           </fieldset>
 
-          {/* ── 6. Cluster Selection ────────────────────────── */}
+          {/* ── 7. Cluster Selection ────────────────────────── */}
           <fieldset className="space-y-3">
             <legend className="text-sm font-medium text-gray-700 mb-1">
               Cluster Selection

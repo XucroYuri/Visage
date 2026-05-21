@@ -38,6 +38,10 @@ def _build_parser() -> argparse.ArgumentParser:
     # Detection options
     detect_group = parser.add_argument_group("detection")
     detect_group.add_argument(
+        "--detection-backend", choices=["auto", "vision", "scrfd", "yunet"], default=None,
+        help="Face detection backend (default: auto — macOS: Vision, other: SCRFD→YuNet)",
+    )
+    detect_group.add_argument(
         "--min-confidence", type=float, default=None,
         help="Minimum face detection confidence (default: 0.5)",
     )
@@ -181,6 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     # Build config from file + CLI overrides
     overrides = {
         "copy_mode": not args.move,
+        "detection_backend": args.detection_backend,
         "detection_confidence": args.min_confidence,
         "embedding_backend": args.backend,
         "embedding_model": args.model,

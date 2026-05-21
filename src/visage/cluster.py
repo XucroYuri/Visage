@@ -58,6 +58,25 @@ def extract_embeddings(
     if not embeddings:
         return np.empty((0, embedding_dim)), []
 
+    # ── Dimension consistency check ───────────────────────────
+    # Detect mixed-dimension embeddings (e.g., dlib 128-dim fallback
+    # alongside InsightFace 512-dim). When mixed, pad smaller vectors
+    # to match the majority dimension with a warning.
+    dims = {e.shape[0] for e in embeddings}
+    if len(dims) > 1:
+        majority_dim = max(dims, key=lambda d: sum(1 for e in embeddings if e.shape[0] == d))
+        logger.warning(
+            "Mixed-dimension embeddings detected: %s. "
+            "Padding smaller dims to %d. This indicates dlib fallback "
+            "was triggered within InsightFaceBackend.",
+            sorted(dims), majority_dim,
+        )
+        for i in range(len(embeddings)):
+            if embeddings[i].shape[0] != majority_dim:
+                pad_width = majority_dim - embeddings[i].shape[0]
+                embeddings[i] = np.pad(embeddings[i], (0, pad_width))
+        embedding_dim = majority_dim
+
     return np.stack(embeddings), face_to_image
 
 

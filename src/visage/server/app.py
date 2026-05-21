@@ -24,6 +24,7 @@ from visage.cluster import (
 )
 from visage.config import VisageConfig
 from visage.detector import detect_faces_batch
+from visage.detectors import get_detector
 from visage.embedder import generate_embeddings_batch
 from visage.scanner import scan_images
 
@@ -61,11 +62,17 @@ def _run_pipeline(
     # Phase 2: Detect faces
     _emit(2, "Detecting faces...")
     t0 = time.time()
+    detector = get_detector(
+        config.detection_backend,
+        min_confidence=config.detection_confidence,
+        min_face_size=config.min_face_size,
+    )
     image_results, _detection_stats = detect_faces_batch(
         image_paths,
         min_confidence=config.detection_confidence,
         min_face_size=config.min_face_size,
         max_workers=config.max_workers,
+        detector=detector,
     )
     images_with_faces = sum(1 for r in image_results if r.faces and not r.error)
     _emit(

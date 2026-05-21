@@ -123,9 +123,9 @@ class InsightFaceBackend:
         with self._lock:
             self._init_app()
 
-            # Crop face region with padding for detection context.
-            # Running on a crop drastically reduces InsightFace temporary memory
-            # compared to running detection on the full high-resolution image.
+            # Crop face region with generous padding for detection context.
+            # Running on a crop reduces InsightFace temporary memory compared
+            # to running detection on the full high-resolution image.
             crop = self._crop_face(image, face_box)
             bgr_crop = crop[:, :, ::-1] if crop.shape[-1] == 3 else crop
 
@@ -142,14 +142,41 @@ class InsightFaceBackend:
                     face_box, exc_info=True,
                 )
 
+            # Retry with full image (downscaled) when crop-based detection fails.
+            # The crop may not provide enough context for landmark detection,
+            # especially for tight face crops at extreme angles.
+            try:
+                full_h, full_w = image.shape[:2]
+                # Downscale full image if very large (keep memory reasonable)
+                src = image
+                if full_w > 1280 or full_h > 1280:
+                    scale = 1280.0 / max(full_w, full_h)
+                    new_w = int(full_w * scale)
+                    new_h = int(full_h * scale)
+                    import cv2
+                    src = cv2.resize(image, (new_w, new_h),
+                                     interpolation=cv2.INTER_LINEAR)
+                bgr_src = src[:, :, ::-1] if src.shape[-1] == 3 else src
+                faces = self._app.get(bgr_src)
+                if faces:
+                    embedding = faces[0].embedding
+                    if embedding is not None:
+                        return embedding
+            except Exception:
+                logger.warning(
+                    "InsightFace full-image retry failed for face at %s",
+                    face_box, exc_info=True,
+                )
+
         # Fall back to dlib if InsightFace detection fails
         return self._dlib_generate(image, face_box)
 
     def _dlib_generate(self, image: np.ndarray, face_box: FaceBox) -> np.ndarray | None:
         """Fallback embedding via dlib when InsightFace fails.
 
-        Pads the 128-dim dlib vector to 512-dim with zeros so all embeddings
-        in a mixed run have the same shape for clustering.
+        Returns the raw 128-dim dlib vector. Dimension unification is handled
+        by extract_embeddings() in cluster.py, which pads smaller embeddings
+        to match the majority dimension when mixed-dimension data is detected.
         """
         if self._dlib_fallback is None:
             try:
@@ -159,17 +186,20 @@ class InsightFaceBackend:
             self._dlib_fallback = DlibBackend(model=self._fallback_model)
         emb = self._dlib_fallback.generate(image, face_box)
         if emb is not None:
-            emb = np.pad(emb, (0, self.embedding_dim - len(emb)))
-        return emb
+            # Return raw 128-dim vector — no zero-padding to 512.
+            # Zero-padding introduces 384 "dead dimensions" that distort
+            # cosine similarity in downstream clustering.
+            return emb
+        return None
 
     @staticmethod
     def _crop_face(image: np.ndarray, face_box: FaceBox) -> np.ndarray:
-        """Crop face region with 80% padding for landmark detection context."""
+        """Crop face region with 120% padding for landmark detection context."""
         h, w = image.shape[:2]
         fw = face_box.width
         fh = face_box.height
-        pad_x = int(fw * 0.8)
-        pad_y = int(fh * 0.8)
+        pad_x = int(fw * 1.2)
+        pad_y = int(fh * 1.2)
 
         x1 = max(0, face_box.left - pad_x)
         y1 = max(0, face_box.top - pad_y)

@@ -19,6 +19,7 @@ from .cluster import (
     merge_clusters,
 )
 from .config import DEFAULT_OUTPUT_DIRNAME, VisageConfig
+from .detectors import get_detector
 from .detector import detect_faces_batch
 from .embedder import generate_embeddings_batch
 from .head_features import FEATURE_DIM
@@ -139,6 +140,13 @@ def run_pipeline(
     # ── Phase 2: Detect faces ──────────────────────────────────────
     phase_start = time.time()
 
+    # Create detector backend
+    detector = get_detector(
+        cfg.detection_backend,
+        min_confidence=cfg.detection_confidence,
+        min_face_size=cfg.min_face_size,
+    )
+
     def detection_progress(completed: int, total: int) -> None:
         prog.update("2/5 Detection", completed, total)
 
@@ -148,6 +156,7 @@ def run_pipeline(
         min_face_size=cfg.min_face_size,
         max_workers=cfg.max_workers,
         progress_callback=detection_progress,
+        detector=detector,
     )
 
     images_with_faces = sum(1 for r in image_results if r.faces and not r.error)

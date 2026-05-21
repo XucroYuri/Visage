@@ -28,7 +28,7 @@ class TestVisageConfigDefaults:
         assert config.embedding_backend == "insightface"
         assert config.embedding_model == "small"
         assert config.num_jitters == 1
-        assert config.min_face_quality == 0.0
+        assert config.min_face_quality == 0.15
         assert config.cluster_method == "hdbscan"
         assert config.dbscan_eps == 0.5
         assert config.dbscan_min_samples == 2

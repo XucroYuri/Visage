@@ -87,6 +87,7 @@ export interface SaveSettings {
   include_unclustered?: boolean;
   include_no_faces?: boolean;
   cluster_ids?: number[];
+  multi_face_strategy?: "primary" | "all";
 }
 
 export interface SaveResult {

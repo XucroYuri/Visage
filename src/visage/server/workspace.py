@@ -565,6 +565,66 @@ class Workspace:
 
     # ── Save ────────────────────────────────────────────────────
 
+    # ── Multi-face strategy ──────────────────────────────────
+
+    def _build_primary_face_cluster_map(self) -> dict[str, int]:
+        """Map each image path to the cluster ID of its primary face.
+
+        Only images whose primary face belongs to a valid cluster (not noise)
+        are included in the result.
+
+        Returns:
+            Dict of ``{image_path: cluster_id}``.
+        """
+        result: dict[str, int] = {}
+        for r in self._image_results:
+            if not r.faces:
+                continue
+            path = r.path
+            # Find the primary face
+            primary_face = next((f for f in r.faces if f.is_primary), None)
+            if primary_face is None:
+                continue
+            # Look up its current cluster from face-level tracking
+            fc = self._face_clusters.get(path, {})
+            cid = fc.get(primary_face.face_index, -1)
+            if cid >= 0:
+                result[path] = cid
+        return result
+
+    def _apply_multi_face_strategy(
+        self,
+        mapping: dict[int, list[str]],
+        strategy: str,
+    ) -> dict[int, list[str]]:
+        """Filter a cluster mapping according to the multi-face strategy.
+
+        ``"all"`` — preserve current behavior: images may appear in multiple
+        cluster folders when they contain faces from different people.
+
+        ``"primary"`` — each image only appears in the folder of its primary
+        (main) face. Secondary faces' cluster folders do not receive a copy.
+
+        Args:
+            mapping: cluster_id → list of image paths.
+            strategy: ``"all"`` or ``"primary"``.
+
+        Returns:
+            Filtered cluster mapping.
+        """
+        if strategy == "all":
+            return mapping
+
+        primary_map = self._build_primary_face_cluster_map()
+        filtered: dict[int, list[str]] = {}
+        for cid, paths in mapping.items():
+            cid_paths = [p for p in paths if primary_map.get(p) == cid]
+            if cid_paths:
+                filtered[cid] = cid_paths
+        return filtered
+
+    # ── Save ────────────────────────────────────────────────────
+
     def save_to_disk(
         self,
         output_dir: str | None = None,
@@ -573,6 +633,7 @@ class Workspace:
         include_unclustered: bool | None = None,
         include_no_faces: bool | None = None,
         cluster_ids: list[int] | None = None,
+        multi_face_strategy: str | None = None,
     ) -> dict:
         """Write organized files to disk using the current cluster mapping.
 
@@ -587,12 +648,18 @@ class Workspace:
             include_no_faces: Export images with no detected faces.
             cluster_ids: If provided, export only the specified clusters
                 (the in-memory mapping is not modified).
+            multi_face_strategy: ``"primary"`` or ``"all"``. Controls how
+                images with multiple faces from different clusters are handled.
+                ``"primary"`` only places each image in its primary face's
+                cluster folder. ``"all"`` places images in all matching cluster
+                folders (current behavior).
 
         Returns:
             Stats dict for display.
         """
         out = output_dir or self.input_dir.rstrip("/") + "/" + DEFAULT_OUTPUT_DIRNAME
 
+        # Base mapping (with optional cluster filter)
         mapping = self._cluster_mapping
         if cluster_ids is not None:
             mapping = {
@@ -600,6 +667,14 @@ class Workspace:
                 for cid, paths in self._cluster_mapping.items()
                 if cid in cluster_ids
             }
+
+        # Apply multi-face strategy
+        mfs = (
+            multi_face_strategy
+            if multi_face_strategy is not None
+            else self.config.multi_face_strategy
+        )
+        mapping = self._apply_multi_face_strategy(mapping, mfs)
 
         fp = folder_prefix if folder_prefix is not None else self.config.folder_prefix
         iu = (

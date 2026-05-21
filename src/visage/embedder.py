@@ -12,7 +12,7 @@ from .cache import EmbeddingCache
 from .head_features import extract_head_features
 from .heic import load_image_as_numpy
 from .models import FaceBox, ImageResult
-from .quality import compute_face_quality
+from .quality import compute_combined_quality
 
 logger = logging.getLogger(__name__)
 
@@ -115,8 +115,10 @@ def generate_embeddings_for_image(
         return image_result
 
     for face in image_result.faces:
-        # Compute quality score
-        face.quality = compute_face_quality(image_array, face.face_box)
+        # Compute quality score (FIQA + legacy fusion)
+        face.quality = compute_combined_quality(
+            image_array, face.face_box, landmarks_5=face.landmarks_5,
+        )
 
         # Skip faces below quality threshold
         if min_face_quality > 0 and face.quality < min_face_quality:

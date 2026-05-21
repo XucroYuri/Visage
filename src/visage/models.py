@@ -48,6 +48,9 @@ class DetectedFace:
     # 5 facial landmarks for alignment: (left_eye, right_eye, nose, left_mouth, right_mouth)
     # Each landmark is (x, y) in pixel coordinates.
     landmarks_5: list[tuple[float, float]] | None = None
+    # Whether this face is the primary (main) face in its image.
+    # Only one face per image can be primary, determined by size + position + confidence.
+    is_primary: bool = False
 
 
 @dataclass

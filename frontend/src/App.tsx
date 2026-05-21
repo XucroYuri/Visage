@@ -161,6 +161,7 @@ export default function App() {
       folder_prefix: store.folderPrefix,
       include_unclustered: store.includeUnclustered,
       include_no_faces: store.includeNoFaces,
+      multi_face_strategy: store.multiFaceStrategy,
     };
     if (
       store.clusterSelectionMode === "selected" &&

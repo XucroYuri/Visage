@@ -22,7 +22,7 @@ from visage.cluster import (
 from visage.cluster import (
     merge_clusters as cluster_merge,
 )
-from visage.head_features import FEATURE_DIM
+from visage.pipeline import _extract_head_features
 from visage.server.workspace import Workspace
 
 logger = logging.getLogger(__name__)
@@ -288,6 +288,7 @@ async def save(request: Request):
             include_unclustered=body.get("include_unclustered"),
             include_no_faces=body.get("include_no_faces"),
             cluster_ids=body.get("cluster_ids"),
+            multi_face_strategy=body.get("multi_face_strategy"),
         )
         return {"ok": True, "stats": stats}
     except Exception as exc:
@@ -311,43 +312,11 @@ def get_config(request: Request):
         "small_merge_threshold": ws.config.small_merge_threshold,
         "min_reliable_size": ws.config.min_reliable_size,
         "head_feature_weight": ws.config.head_feature_weight,
+        "multi_face_strategy": ws.config.multi_face_strategy,
     }
 
 
 # ── Re-clustering ─────────────────────────────────────────────
-
-
-def _extract_head_features_for_recluster(
-    image_results: list,
-    face_to_image: list[tuple[str, int]],
-) -> tuple[np.ndarray | None, np.ndarray]:
-    """Extract head feature vectors aligned with face_to_image ordering.
-
-    Mirrors _extract_head_features from pipeline.py but takes image_results
-    in list form (for use in re-cluster endpoint).
-    """
-    face_lookup: dict[tuple[str, int], object] = {}
-    for result in image_results:
-        if getattr(result, "error", None):
-            continue
-        for face in getattr(result, "faces", []):
-            if getattr(face, "embedding", None) is not None:
-                face_lookup[(result.path, getattr(face, "face_index", 0))] = face
-
-    feats: list[np.ndarray] = []
-    valid_mask: list[bool] = []
-    for path, face_idx in face_to_image:
-        face = face_lookup.get((path, face_idx))
-        if face is not None and getattr(face, "head_features", None) is not None:
-            feats.append(face.head_features)
-            valid_mask.append(True)
-        else:
-            feats.append(np.zeros(FEATURE_DIM, dtype=np.float64))
-            valid_mask.append(False)
-
-    if not feats:
-        return None, np.array([], dtype=bool)
-    return np.stack(feats), np.array(valid_mask)
 
 
 @router.post("/recluster")
@@ -392,7 +361,7 @@ async def recluster(request: Request):
     # Build composite distance matrix if using head features
     distance_matrix = None
     if hf_weight > 0.0 and len(embeddings) > 1:
-        head_result = _extract_head_features_for_recluster(image_results, face_to_image)
+        head_result = _extract_head_features(image_results, face_to_image)
         head_feats, head_valid = head_result
         if head_feats is not None and head_feats.shape[1] > 0:
             normed = _normalize_embeddings(embeddings)
