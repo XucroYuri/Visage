@@ -50,9 +50,13 @@ web = [
     "fastapi>=0.100",
     "uvicorn>=0.23",
 ]
+vector = [
+    "faiss-cpu>=1.7",
+]
 
 [project.scripts]
 visage = "visage.cli:main"
+visage-engine = "visage.embedding.service:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

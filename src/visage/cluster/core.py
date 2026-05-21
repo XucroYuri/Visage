@@ -6,7 +6,7 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 from sklearn.neighbors import NearestNeighbors
 
-from .models import ClusterResult, ImageResult
+from visage.models import ClusterResult, ImageResult
 
 logger = logging.getLogger(__name__)
 
