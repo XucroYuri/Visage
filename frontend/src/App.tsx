@@ -8,6 +8,7 @@ import { PhotoGrid } from "./components/PhotoGrid";
 import { SaveDialog } from "./components/SaveDialog";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
+import { ImportWizard } from "./components/ImportWizard";
 import { ToastContainer } from "./components/Toast";
 import { useKeyboard } from "./hooks/useKeyboard";
 import { useSettingsStore } from "./store/settings";
@@ -123,6 +124,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveResult, setSaveResult] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   // Ref for main content area (for scrolling)
   const mainRef = useRef<HTMLDivElement>(null);
@@ -358,6 +360,7 @@ export default function App() {
         onUndo={handleUndo}
         onOpenSave={handleOpenSave}
         onOpenSettings={handleOpenSettings}
+        onOpenImport={() => setImportOpen(true)}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -431,6 +434,16 @@ export default function App() {
         }))}
         defaultOutputDir={`${ws.input_dir}/visage_output`}
       />
+
+      {importOpen && (
+        <ImportWizard
+          onImport={(dir) => {
+            setImportOpen(false);
+            window.location.href = `/?dir=${encodeURIComponent(dir)}`;
+          }}
+          onClose={() => setImportOpen(false)}
+        />
+      )}
     </div>
   );
 }

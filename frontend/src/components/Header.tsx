@@ -10,6 +10,7 @@ interface HeaderProps {
   onUndo: () => void;
   onOpenSave: () => void;
   onOpenSettings: () => void;
+  onOpenImport?: () => void;
 }
 
 export function Header({
@@ -21,6 +22,7 @@ export function Header({
   onUndo,
   onOpenSave,
   onOpenSettings,
+  onOpenImport,
 }: HeaderProps) {
   return (
     <header className="flex items-center justify-between px-4 sm:px-6 py-3 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 shadow-sm shrink-0 transition-colors">
@@ -51,6 +53,29 @@ export function Header({
           <span className="text-sm text-green-600 dark:text-green-400 mr-2 animate-pulse hidden sm:inline">
             {saveResult}
           </span>
+        )}
+
+        {onOpenImport && (
+          <button
+            onClick={onOpenImport}
+            className="p-2 text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+            title="Import Photos"
+            aria-label="Import Photos"
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+          </button>
         )}
 
         <DarkModeToggle />
