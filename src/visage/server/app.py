@@ -31,6 +31,7 @@ from visage.scanner import scan_images
 from .routes import router
 from .routes_active import router as active_router
 from .routes_events import router as events_router
+from .routes_library import router as library_router
 from .routes_search import router as search_router
 from .workspace import Workspace
 
@@ -262,6 +263,8 @@ def create_app(input_dir: str, config: VisageConfig | None = None) -> FastAPI:
     app.include_router(events_router)
     app.include_router(search_router)
     app.include_router(active_router)
+    app.include_router(library_router)
+    app.include_router(library_router)
 
     # Serve React static files (production build)
     static_dir = Path(__file__).parent / "static"
