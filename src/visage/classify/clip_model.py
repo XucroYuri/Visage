@@ -49,7 +49,6 @@ class CLIPClassifier:
     ) -> None:
         self._text_session = None
         self._vision_session = None
-        self._text_embeddings: dict[str, np.ndarray] = {}
         self._label_dim = 64  # Feature-based embedding dimension
 
         if text_model_path:
@@ -203,9 +202,6 @@ class CLIPClassifier:
 
     def _encode_text_onnx(self, text: str) -> np.ndarray:
         """Encode text using ONNX text encoder."""
-        # Tokenize: simple character-level truncation for demo
-        # Production would use proper BPE tokenizer
-
         tokens = np.array([ord(c) for c in text[:77]], dtype=np.int64)
         tokens = np.pad(tokens, (0, max(0, 77 - len(tokens))))
 
