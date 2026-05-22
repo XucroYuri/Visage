@@ -1,0 +1,1 @@
+import{m as r}from"./index-Dnowe-2i.js";function o(){return r("/events")}function c(e,n=20,t=.3){return r(`/search/semantic?q=${encodeURIComponent(e)}&top_k=${n}&min_score=${t}`)}function a(e,n=0,t=100){return r(`/search/tags?tags=${encodeURIComponent(e)}&min_score=${n}&limit=${t}`)}export{a as n,c as r,o as t};

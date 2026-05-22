@@ -276,6 +276,10 @@ export default function App() {
     onUndo: ws?.can_undo ? handleUndo : undefined,
     onSave: saveDialogOpen ? undefined : handleOpenSave,
     onSelectAll: handleSelectAll,
+    onSearch: () => navigate("/search"),
+    onView: () => {
+      // View first selected photo, or do nothing
+    },
     onEscape: () => {
       if (editingName !== null) {
         handleCancelEdit();
