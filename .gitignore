@@ -37,6 +37,8 @@ visage_output/
 .omc/sessions/
 .omc/state/
 .omc/project-memory.json
+.claude/
+!.claude/settings.json
 
 # Frontend
 frontend/node_modules/
