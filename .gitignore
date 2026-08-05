@@ -33,8 +33,10 @@ visage_output/
 .visage_cache/
 *.log
 
-# OMC plugin state
-.omc/
+# OMC plugin state (runtime sessions/state only; skills are committed)
+.omc/sessions/
+.omc/state/
+.omc/project-memory.json
 
 # Frontend
 frontend/node_modules/
